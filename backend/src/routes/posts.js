@@ -1,7 +1,8 @@
 /**
- * Génération des posts LinkedIn par OpenRouter (deepseek) et historique des posts générés.
+ * Génération des posts LinkedIn par OpenRouter (deepseek), posts du compte et journaux techniques.
  * Lot L0.5 : l'utilisateur vient toujours de la session (req.utilisateur, posé par exigerSession),
  * jamais du corps ni de l'URL. Chacun ne voit que ses propres journaux.
+ * Lot L0.7 : chaque post généré est aussi gardé dans la table Post du compte (l'historique du front).
  */
 import { Router } from 'express'
 import axios from 'axios'
@@ -11,6 +12,7 @@ const router = Router()
 
 const MODELE = 'deepseek/deepseek-chat'
 const LONGUEUR_MAX = 2000
+export const POSTS_AFFICHES = 50
 
 const construirePrompt = ({ type, description, tech, tone }) => `Tu es un expert LinkedIn copywriter. Rédige un post LinkedIn en français pour un ingénieur.
 
@@ -73,8 +75,8 @@ router.post('/generate', async (req, res) => {
       return res.status(502).json({ error: 'Réponse OpenRouter invalide' })
     }
 
-    const log = await prisma.generatedPostLog.create({
-      data: {
+    const [log, enregistre] = await prisma.$transaction([
+      prisma.generatedPostLog.create({ data: {
         userId: req.utilisateur.id,
         type: type || null,
         description,
@@ -83,14 +85,34 @@ router.post('/generate', async (req, res) => {
         model: MODELE,
         generatedContent,
         rawResponse: JSON.stringify(openRouterRes.data),
-      },
-    })
+      } }),
+      // Le modèle est gardé sous son nom court, comme le front l'affiche (« deepseek »).
+      prisma.post.create({ data: { userId: req.utilisateur.id, type: type || null, model: 'deepseek', content: generatedContent } }),
+    ])
 
-    return res.json({ success: true, post: generatedContent, log })
+    return res.json({ success: true, post: generatedContent, log, enregistre })
   } catch (err) {
     const message = err.response?.data?.error?.message || err.message
     console.error('[Posts] Erreur OpenRouter:', message)
     return res.status(502).json({ error: `Erreur OpenRouter : ${message}` })
+  }
+})
+
+// GET /api/posts : les posts du compte, les plus récents d'abord (même limite que l'ancien historique local).
+router.get('/', async (req, res) => {
+  try {
+    const where = { userId: req.utilisateur.id }
+    const [posts, total] = await Promise.all([
+      prisma.post.findMany({
+        where, orderBy: { createdAt: 'desc' }, take: POSTS_AFFICHES,
+        select: { id: true, type: true, model: true, content: true, createdAt: true },
+      }),
+      prisma.post.count({ where }),
+    ])
+    return res.json({ posts, total })
+  } catch (err) {
+    console.error('[Posts] Erreur Prisma:', err.message)
+    return res.status(500).json({ error: 'Erreur lors de la lecture des posts' })
   }
 })
 

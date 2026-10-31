@@ -21,10 +21,11 @@ client.interceptors.response.use(undefined, (err) => {
 })
 
 // Generateur de posts : la clé OpenRouter reste sur le backend, le navigateur ne la voit jamais.
+// Renvoie { texte, post } : post est la ligne gardée dans l'historique du compte.
 export async function generatePost({ type, description, tech, tone }) {
   try {
     const res = await client.post('/posts/generate', { type, description, tech, tone }, { timeout: 90000 })
-    return res.data.post
+    return { texte: res.data.post, post: res.data.enregistre }
   } catch (err) {
     if (err.response?.data?.error) throw new Error(err.response.data.error)
     if (!err.response) throw new Error('Backend injoignable : lance-le avec npm run dev (voir README).')
@@ -68,4 +69,30 @@ export async function rechercherProfils({ requete, lieu, pages }) {
     if (!err.response) throw new Error('Backend injoignable : lance-le avec npm run dev (voir README).')
     throw err
   }
+}
+
+// ─── Données du compte (lot L0.7) ──────────────────────────────────────────
+// Les erreurs du backend arrivent avec leur message lisible.
+const lisible = (err) => {
+  if (err.response?.data?.error) return new Error(err.response.data.error)
+  if (!err.response) return new Error('Backend injoignable : lance-le avec npm run dev (voir README).')
+  return err
+}
+
+// Les 50 derniers posts du compte, et leur nombre total.
+export async function listerPosts() {
+  try { return (await client.get('/posts')).data } catch (err) { throw lisible(err) }
+}
+
+export async function lireParametres() {
+  try { return (await client.get('/compte/parametres')).data.parametres } catch (err) { throw lisible(err) }
+}
+
+export async function enregistrerParametres(parametres) {
+  try { return (await client.put('/compte/parametres', parametres)).data.parametres } catch (err) { throw lisible(err) }
+}
+
+// { posts, settings } du navigateur → { posts: { importes, dejaLa, ecartes }, parametres }
+export async function importerDonneesLocales(donnees) {
+  try { return (await client.post('/compte/import-local', donnees)).data } catch (err) { throw lisible(err) }
 }

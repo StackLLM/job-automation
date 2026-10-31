@@ -19,7 +19,7 @@ import { TYPES_POST, TONS_POST, MODELE_POST, TON_PAR_DEFAUT, titrePost } from '.
 import { dateRelative } from '../lib/stats'
 
 export default function PostGenerator() {
-  const { posts, addPost, settings } = useAppStore()
+  const { posts, totalPosts, ajouterPost, settings } = useAppStore()
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -57,13 +57,13 @@ export default function PostGenerator() {
     if (!form.description.trim()) { toast.error('Décris ton projet ou ton sujet.'); return }
     setLoading(true)
     try {
-      const text = await avecActivite(generatePost({
+      const { texte, post } = await avecActivite(generatePost({
         type: form.type, description: form.description,
         tech: form.tech, tone: form.tone,
       }))
-      setResult(text)
+      setResult(texte)
       setResources(null)
-      addPost({ type: form.type, model: MODELE_POST.id, content: text })
+      if (post) ajouterPost(post)
       toast.success('Post généré !')
       setActiveTab('post')
     } catch (err) {
@@ -233,7 +233,7 @@ export default function PostGenerator() {
 
       {/* ── Historique ── */}
       <Card>
-        <CardHeader titre={`Historique (${posts.length})`} sousTitre="Les 50 derniers posts sont gardés dans ce navigateur" />
+        <CardHeader titre={`Historique (${totalPosts})`} sousTitre="Les 50 derniers posts de ton compte" />
         {posts.length > 0 ? (
           <div className="-mx-2 max-h-80 overflow-y-auto px-2">
             <ListeActivite

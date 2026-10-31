@@ -87,7 +87,7 @@ test('signale une erreur du backend sans ajouter de profil', async ({ page }) =>
 
 test('un webhook réglé dans Paramètres est appelé directement, sans passer par le backend', async ({ page }) => {
   const WEBHOOK = 'http://n8n-perso.test/webhook/scraper'
-  const api = await simulerApi(page)
+  const api = await simulerApi(page, {}, { parametres: { scraperWebhook: WEBHOOK } })
   const appelsWebhook = []
   await page.route(WEBHOOK, (route) => {
     appelsWebhook.push(route.request().postDataJSON())
@@ -95,7 +95,6 @@ test('un webhook réglé dans Paramètres est appelé directement, sans passer p
   })
   const etat = etatNavigateur()
   etat.state.scrapedProfiles = []
-  etat.state.settings.scraperWebhook = WEBHOOK
   await prechargerNavigateur(page, etat)
 
   await page.goto('./scraper')

@@ -3,10 +3,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import request from 'supertest'
 import { gardeTest, UTILISATEUR_TEST } from './aides.js'
 
-const { axiosPost, creerLog } = vi.hoisted(() => ({ axiosPost: vi.fn(), creerLog: vi.fn() }))
+const { axiosPost, creerLog, creerPost } = vi.hoisted(() => ({ axiosPost: vi.fn(), creerLog: vi.fn(), creerPost: vi.fn() }))
 
 vi.mock('axios', () => ({ default: { post: axiosPost } }))
-vi.mock('../src/lib/prisma.js', () => ({ prisma: { generatedPostLog: { create: creerLog, findMany: vi.fn() } } }))
+vi.mock('../src/lib/prisma.js', () => ({
+  prisma: {
+    generatedPostLog: { create: creerLog, findMany: vi.fn() },
+    post: { create: creerPost },
+    $transaction: (operations) => Promise.all(operations),
+  },
+}))
 
 const { creerApp } = await import('../src/app.js')
 const app = creerApp({ journal: false, garde: gardeTest })
@@ -18,6 +24,8 @@ describe('POST /api/posts/generate', () => {
     axiosPost.mockReset()
     creerLog.mockReset()
     creerLog.mockImplementation(async ({ data }) => ({ id: 'log-1', ...data }))
+    creerPost.mockReset()
+    creerPost.mockImplementation(async ({ data }) => ({ id: 'post-1', createdAt: '2026-10-31T10:00:00.000Z', ...data }))
     vi.spyOn(console, 'error').mockImplementation(() => {})
   })
 
@@ -43,6 +51,18 @@ describe('POST /api/posts/generate', () => {
       model: 'deepseek/deepseek-chat',
       generatedContent: 'Mon post LinkedIn',
     })
+  })
+
+  it('garde le post dans l’historique du compte (lot L0.7)', async () => {
+    axiosPost.mockResolvedValue(reponseOpenRouter('Mon post LinkedIn'))
+    const res = await request(app).post('/api/posts/generate')
+      .send({ type: 'Storytelling', description: 'Un récit', userId: 'quelqu-un-d-autre' }).expect(200)
+
+    expect(creerPost).toHaveBeenCalledOnce()
+    expect(creerPost.mock.calls[0][0].data).toEqual({
+      userId: UTILISATEUR_TEST.id, type: 'Storytelling', model: 'deepseek', content: 'Mon post LinkedIn',
+    })
+    expect(res.body.enregistre).toMatchObject({ id: 'post-1', content: 'Mon post LinkedIn' })
   })
 
   it('ignore un userId envoyé dans le corps : le propriétaire vient de la session', async () => {

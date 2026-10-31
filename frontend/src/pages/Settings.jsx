@@ -24,7 +24,8 @@ export default function Settings() {
     toast.success('Déconnecté.')
     navigate('/connexion', { replace: true })
   }
-  const { settings, updateSettings } = useAppStore()
+  const { settings, enregistrerParametres } = useAppStore()
+  const [enregistrement, setEnregistrement] = useState(false)
   const [form, setForm] = useState({
     ...settings,
     defaultTone: TONS_POST.includes(settings.defaultTone) ? settings.defaultTone : TON_PAR_DEFAUT,
@@ -35,13 +36,20 @@ export default function Settings() {
     setForm((f) => ({ ...f, [name]: value }))
   }
 
-  const handleSave = () => {
-    updateSettings(form)
-    toast.success('Paramètres sauvegardés !')
+  const handleSave = async () => {
+    setEnregistrement(true)
+    try {
+      await enregistrerParametres({ defaultTone: form.defaultTone, scraperWebhook: form.scraperWebhook.trim() })
+      toast.success('Paramètres sauvegardés !')
+    } catch (err) {
+      toast.error(err.message)
+    } finally {
+      setEnregistrement(false)
+    }
   }
 
   return (
-    <Page largeur="moyen" surtitre="Compte" titre="Paramètres" description="Ton compte, et les préférences de génération et du scraper, gardées dans ce navigateur.">
+    <Page largeur="moyen" surtitre="Compte" titre="Paramètres" description="Ton compte, et tes préférences de génération et du scraper, gardées avec lui.">
       <Card>
         <CardHeader titre="Mon compte" />
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -76,7 +84,7 @@ export default function Settings() {
             onChange={handleChange} placeholder="https://ton-instance.../webhook/scraper" />
         </Field>
 
-        <Button icone={Save} onClick={handleSave}>Sauvegarder</Button>
+        <Button icone={Save} chargement={enregistrement} onClick={handleSave}>Sauvegarder</Button>
       </Card>
 
       <Card>

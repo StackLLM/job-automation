@@ -33,16 +33,26 @@ export const PROFILS_NORMALISES = [
   { urlNormalisee: 'https://www.linkedin.com/in/youssef-essai', nom: 'Youssef Essai', poste: 'Architecte AWS', entreprise: null, lieu: null, extrait: 'AWS, Terraform, Rabat', image: null, source: 'n8n' },
 ]
 
-// Contenu de « linkedai-storage » (zustand persist) pour partir d'un navigateur déjà utilisé.
-export const etatNavigateur = ({ maintenant = new Date() } = {}) => ({
+// Posts tels que le serveur les renvoie (GET /api/posts), du plus récent au plus ancien.
+export const postsDuCompte = ({ maintenant = new Date() } = {}) => [
+  { id: 'p-1', type: 'Projet technique', model: 'deepseek', content: 'Mon pipeline Terraform en production\nDétails…', createdAt: maintenant.toISOString() },
+  { id: 'p-2', type: 'Storytelling', model: 'deepseek', content: 'Ma première mission cloud\nRécit…', createdAt: new Date(maintenant.getTime() - 86_400_000).toISOString() },
+]
+
+// Contenu de « linkedai-storage » (zustand persist, version 1) : depuis le lot L0.7, le navigateur ne garde
+// plus que les profils, les lettres et les offres.
+export const etatNavigateur = () => ({
+  state: { letters: [], savedJobs: [], scrapedProfiles: PROFILS },
+  version: 1,
+})
+
+// Navigateur utilisé avant les comptes (version 0) : posts et paramètres y sont encore, à importer.
+export const etatAncienNavigateur = ({ maintenant = new Date() } = {}) => ({
   state: {
-    posts: [
-      { id: 1, type: 'Projet technique', model: 'deepseek', content: 'Mon pipeline Terraform en production\nDétails…', createdAt: maintenant.toISOString() },
-      { id: 2, type: 'Storytelling', model: 'deepseek', content: 'Ma première mission cloud\nRécit…', createdAt: new Date(maintenant.getTime() - 86_400_000).toISOString() },
-    ],
+    posts: postsDuCompte({ maintenant }).map((p, i) => ({ ...p, id: maintenant.getTime() - i })),
     letters: [],
     savedJobs: [],
-    settings: { defaultTone: 'Professionnel', scraperWebhook: '' },
+    settings: { defaultTone: 'Startup', scraperWebhook: '' },
     scrapedProfiles: PROFILS,
   },
   version: 0,

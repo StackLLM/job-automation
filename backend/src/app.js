@@ -11,6 +11,7 @@ import { toNodeHandler } from 'better-auth/node'
 import postRoutes    from './routes/posts.js'
 import n8nRoutes     from './routes/n8n.js'
 import profilRoutes  from './profils/routes.js'
+import compteRoutes  from './compte/routes.js'
 import { limiter }   from './lib/rateLimit.js'
 import { creerAuth, exigerSession } from './auth/index.js'
 
@@ -65,6 +66,7 @@ export function creerApp({ journal = true, garde, limiteConnexion = true } = {})
   app.use('/api/posts',   postRoutes)
   app.use('/api/n8n',     n8nRoutes)
   app.use('/api/profils', profilRoutes)
+  app.use('/api/compte',  compteRoutes)
 
   return app
 }

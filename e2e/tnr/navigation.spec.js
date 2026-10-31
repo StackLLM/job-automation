@@ -1,7 +1,7 @@
 /** TNR-GLOBAL 5 à 9 — Dashboard, recherche globale, paramètres, 404, mobile, et toutes les routes. */
 import { test, expect } from '@playwright/test'
-import { simulerApi, erreursConsole, prechargerNavigateur, lireStockage } from '../fixtures/aides.js'
-import { etatNavigateur, PROFILS } from '../fixtures/donnees.js'
+import { simulerApi, erreursConsole, prechargerNavigateur } from '../fixtures/aides.js'
+import { etatNavigateur, postsDuCompte, PROFILS } from '../fixtures/donnees.js'
 
 test.describe('TNR 5 — dashboard', () => {
   test('montre les états vides sur un navigateur neuf', async ({ page }) => {
@@ -13,9 +13,9 @@ test.describe('TNR 5 — dashboard', () => {
     expect(erreurs).toEqual([])
   })
 
-  test('reflète les posts et profils du navigateur', async ({ page }) => {
+  test('reflète les posts du compte et les profils du navigateur', async ({ page }) => {
     const erreurs = erreursConsole(page)
-    await simulerApi(page)
+    await simulerApi(page, {}, { posts: postsDuCompte() })
     await prechargerNavigateur(page, etatNavigateur())
     await page.goto('./dashboard')
 
@@ -40,7 +40,7 @@ test.describe('TNR 6 — recherche globale', () => {
   })
 
   test('trouve un post de l’historique et l’ouvre dans le générateur', async ({ page }) => {
-    await simulerApi(page)
+    await simulerApi(page, {}, { posts: postsDuCompte() })
     await prechargerNavigateur(page, etatNavigateur())
     await page.goto('./dashboard')
     await page.getByLabel('Rechercher une page, un post ou un profil').fill('terraform')
@@ -59,7 +59,7 @@ test.describe('TNR 6 — recherche globale', () => {
 
 test('TNR 7 — paramètres : le ton par défaut est gardé et repris par le générateur', async ({ page }) => {
   const erreurs = erreursConsole(page)
-  await simulerApi(page)
+  const api = await simulerApi(page)
   await page.goto('./settings')
 
   await page.getByLabel('Ton par défaut').selectOption('Startup')
@@ -68,7 +68,8 @@ test('TNR 7 — paramètres : le ton par défaut est gardé et repris par le gé
 
   await page.reload()
   await expect(page.getByLabel('Ton par défaut')).toHaveValue('Startup')
-  expect((await lireStockage(page)).state.settings.defaultTone).toBe('Startup')
+  expect(api.serveur.parametres.defaultTone).toBe('Startup')
+  expect(api.vers('compte/parametres').filter((a) => a.methode === 'PUT')).toHaveLength(1)
 
   await page.goto('./posts')
   await expect(page.getByLabel('Ton')).toHaveValue('Startup')
@@ -88,7 +89,7 @@ test.describe('TNR 9 — mobile (375 px)', () => {
 
   test('barre de navigation en bas, sans défilement horizontal, sur chaque page', async ({ page }) => {
     const erreurs = erreursConsole(page)
-    await simulerApi(page)
+    await simulerApi(page, {}, { posts: postsDuCompte() })
     await prechargerNavigateur(page, etatNavigateur())
     await page.goto('./dashboard')
 

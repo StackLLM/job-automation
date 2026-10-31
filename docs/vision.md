@@ -5,7 +5,7 @@
 Ce document résume **pourquoi** le produit existe, **pour qui**, et **dans quel ordre** il se construit.
 Le détail technique, phase par phase et lot par lot, est dans [PLAN.md](../PLAN.md). L'architecture actuelle est dans [architecture.md](architecture.md).
 
-État au **30/10/2026**.
+État au **31/10/2026**.
 
 ---
 
@@ -65,17 +65,17 @@ Les cibles sont des hypothèses, à valider par des entretiens :
 3. **Les données appartiennent au compte.** Isolation testée sur chaque ressource (`TS-ISOLATION`) ; export et suppression complète prévus (`L6.4`).
 4. **Une fonction n'est terminée que si ses données, sa persistance et ses erreurs sont vérifiées**, pas seulement son écran.
 5. **Des chiffres réels.** Aucun indicateur sans données ; un état vide explicite.
-6. **Coûts visibles.** Chaque appel IA est compté par utilisateur (`L0.6`), avec des quotas avant toute ouverture payante.
+6. **Coûts visibles.** Chaque appel IA sera compté par utilisateur (`L0.6`, mis de côté pour l'instant), avec des quotas avant toute ouverture payante.
 
 ## 6. Où en est-on
 
 | Capacité | État | Lots |
 |---|---|---|
-| Socle : tests, CI, PostgreSQL, comptes, isolation des journaux | ✅ en service | `L0.1` à `L0.5` |
+| Socle : tests, CI, PostgreSQL, comptes, isolation, posts et paramètres sur le compte, reprise du navigateur | ✅ en service | `L0.1` à `L0.5`, `L0.7` |
 | Générateur de posts, ressources, visuel IA | ✅ en service | existant |
 | Recherche de profils par le backend, profils normalisés | ✅ en service | `L1.2` |
 | Remplacement de Google Custom Search (fin le 01/01/2027) : Serper, puis Brave, n8n en secours | 🛠 code prêt, clés à mettre | `L1.4` |
-| Coût IA par utilisateur, reprise des données du navigateur | 🆕 prochains lots | `L0.6`, `L0.7` |
+| Coût IA par utilisateur | ⏸ mis de côté | `L0.6` |
 | Profils en base, fiche détaillée, suppression | 🆕 | `L1.1`, `L1.3`, `L1.5` à `L1.7` |
 | Offres d'emploi | 🆕 | Phase 2 |
 | CV adapté à une offre (Skill ATS) | 🆕 | Phase 3 |

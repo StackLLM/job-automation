@@ -27,6 +27,32 @@ model GeneratedPostLog {
   @@index([createdAt])
 }
 
+// ─── Données du compte (lot L0.7) ───────────────────────────────────────────
+// Posts gardés par l'utilisateur et ses préférences. Les noms de colonnes suivent ceux du front.
+
+model Post {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String?
+  model     String?
+  content   String
+  // Identifiant du post dans le navigateur, pour qu'un import relancé ne crée aucun doublon.
+  idLocal   String?
+  createdAt DateTime @default(now())
+
+  @@unique([userId, idLocal])
+  @@index([userId, createdAt])
+}
+
+model Parametres {
+  userId         String   @id
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  defaultTone    String   @default("Professionnel")
+  scraperWebhook String   @default("")
+  updatedAt      DateTime @updatedAt
+}
+
 // ─── Comptes et sessions (lot L0.4) ─────────────────────────────────────────
 // Tables attendues par Better Auth (adaptateur Prisma). Les mots de passe sont hachés
 // par Better Auth et rangés dans Account.password ; les sessions vivent en base.
@@ -42,6 +68,8 @@ model User {
   sessions      Session[]
   accounts      Account[]
   postLogs      GeneratedPostLog[]
+  posts         Post[]
+  parametres    Parametres?
 
   @@map("user")
 }

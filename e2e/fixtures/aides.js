@@ -3,6 +3,8 @@
  * - simulerApi : remplace le backend (posts, n8n, profils, comptes) par des réponses fixes et note chaque appel ;
  *   tout appel /api non prévu échoue, pour qu'un nouvel appel ne passe pas inaperçu.
  *   Par défaut, un utilisateur est connecté (UTILISATEUR) ; { connecte: false } simule un visiteur.
+ *   Les posts et paramètres du compte (lot L0.7) vivent dans un petit serveur en mémoire :
+ *   { posts, parametres } fixent son contenu de départ ; api.serveur permet de le lire.
  * - Les ressources externes (police Google, html-to-image sur jsDelivr) sont servies en local :
  *   la suite tourne sans Internet.
  * - erreursConsole : erreurs JavaScript et console de la page.
@@ -20,15 +22,35 @@ export const UTILISATEUR = { id: 'u-1', name: 'Amina Test', email: 'amina@exempl
 const sessionDe = (utilisateur) => ({ session: { id: 's-1', userId: utilisateur.id, expiresAt: '2099-01-01T00:00:00.000Z' }, user: utilisateur })
 
 const REPONSES = {
-  'posts/generate': () => ({ status: 200, json: { success: true, post: POST_GENERE } }),
   'n8n/resource-suggestions': () => ({ status: 200, json: RESSOURCES }),
   'n8n/generate-visual': () => ({ status: 200, json: VISUEL }),
   'n8n/scraper': () => ({ status: 200, json: { profiles: PROFILS } }),
   'profils/rechercher': () => ({ status: 200, json: { profils: PROFILS_NORMALISES, rejetes: 0, source: 'n8n' } }),
 }
 
-export async function simulerApi(page, remplacements = {}, { connecte = true } = {}) {
+export async function simulerApi(page, remplacements = {}, { connecte = true, posts = [], parametres = {} } = {}) {
   const appels = []
+  const serveur = { posts: [...posts], parametres: { defaultTone: 'Professionnel', scraperWebhook: '', ...parametres } }
+  const DONNEES = {
+    'posts': () => ({ status: 200, json: { posts: serveur.posts.slice(0, 50), total: serveur.posts.length } }),
+    'posts/generate': (corps) => {
+      const enregistre = { id: `p-${serveur.posts.length + 1}`, type: corps.type, model: 'deepseek', content: POST_GENERE, createdAt: new Date().toISOString() }
+      serveur.posts.unshift(enregistre)
+      return { status: 200, json: { success: true, post: POST_GENERE, enregistre } }
+    },
+    'compte/parametres': (corps, methode) => {
+      if (methode === 'PUT') serveur.parametres = { ...serveur.parametres, ...corps }
+      return { status: 200, json: { parametres: serveur.parametres } }
+    },
+    // Même règle que le backend : un post déjà importé (même id local) n'est pas recréé.
+    'compte/import-local': (corps) => {
+      const deja = new Set(serveur.posts.map((p) => p.idLocal))
+      const nouveaux = (corps.posts || []).filter((p) => !deja.has(String(p.id)))
+      serveur.posts.push(...nouveaux.map((p) => ({ ...p, id: `i-${p.id}`, idLocal: String(p.id) })))
+      serveur.posts.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      return { status: 200, json: { posts: { importes: nouveaux.length, dejaLa: (corps.posts || []).length - nouveaux.length, ecartes: 0 }, parametres: 'conserves' } }
+    },
+  }
   // La session suit les connexions et déconnexions simulées pendant le test.
   let utilisateur = connecte ? UTILISATEUR : null
   const COMPTE = {
@@ -55,7 +77,7 @@ export async function simulerApi(page, remplacements = {}, { connecte = true } =
     const corps = requete.postDataJSON?.() ?? null
     appels.push({ chemin, methode: requete.method(), corps })
 
-    const reponse = (remplacements[chemin] || REPONSES[chemin] || COMPTE[chemin])?.(corps)
+    const reponse = (remplacements[chemin] || REPONSES[chemin] || DONNEES[chemin] || COMPTE[chemin])?.(corps, requete.method())
     if (!reponse) return route.fulfill({ status: 599, body: `Appel non simulé : ${chemin}` })
     return route.fulfill({ status: reponse.status, contentType: 'application/json', body: JSON.stringify(reponse.json) })
   })
@@ -67,6 +89,7 @@ export async function simulerApi(page, remplacements = {}, { connecte = true } =
 
   return {
     appels,
+    serveur,
     vers: (chemin) => appels.filter((a) => a.chemin === chemin),
   }
 }
@@ -84,6 +107,10 @@ export function erreursConsole(page) {
   page.on('pageerror', (err) => erreurs.push(err.message))
   return erreurs
 }
+
+export const CLE_A_IMPORTER = 'linkedai-a-importer'
+export const lireAImporter = (page) =>
+  page.evaluate((cle) => JSON.parse(window.localStorage.getItem(cle) || 'null'), CLE_A_IMPORTER)
 
 export const lireStockage = (page) =>
   page.evaluate((cle) => JSON.parse(window.localStorage.getItem(cle) || 'null'), CLE_STOCKAGE)

@@ -116,7 +116,8 @@ donnée réelle de LinkedAI, ou n'est pas repris.
 | C-24 | Table des profils | photo, nom, titre, extrait, lien | `src/components/scraper/TableProfils.jsx` | Approximé |
 | C-25 | Page d'attente | fonction prévue, phase, retour | `src/components/ui/PageAttente.jsx` | Approximé |
 | C-30 | Cadre des pages de compte | fond de l'app, logo, carte centrée (C-07), liens en pied | `src/components/auth/CadreAuth.jsx` | Déduit |
-| C-31 | Garde des routes | chargement de la session, renvoi vers `/connexion` ou `/dashboard` | `src/components/auth/RouteProtegee.jsx` | Déduit |
+| C-31 | Garde des routes | chargement de la session, puis des posts et paramètres du compte ; renvoi vers `/connexion` ou `/dashboard` | `src/components/auth/RouteProtegee.jsx` | Déduit |
+| C-32 | Import des données du navigateur | bandeau en haut du contenu : « Importer » ou « Plus tard » ; données effacées seulement après un import réussi (lot L0.7) | `src/components/compte/ImportNavigateur.jsx` | Déduit |
 
 ## 6. Typographie appliquée
 

@@ -682,6 +682,8 @@ Fin du lot : critères de `L0.1` cochés, section « Tests » du README écrite,
 
 ## Phase 0 — Socle technique
 
+> **État : ✅ close le 31/10/2026.** `L0.1` à `L0.5` et `L0.7` livrés. `L0.6` (coût IA) est **mis de côté** sur décision du 31/10/2026 : on se concentre sur l'essentiel ; il reviendra avant les quotas (`L6.5`) et toute ouverture payante. Le critère « les appels IA passent par un client commun qui mesure leur coût » n'est donc pas tenu. Recette : [docs/recette/phase-0.md](docs/recette/phase-0.md).
+
 **Objectif** : poser ce sans quoi les phases suivantes ne peuvent être ni testées ni multi-utilisateurs. À la fin :
 
 - les tests tournent en CI ;
@@ -781,6 +783,8 @@ Fin du lot : critères de `L0.1` cochés, section « Tests » du README écrite,
 
 ### L0.6 — Client IA commun et mesure des coûts
 
+> **État : ⏸ mis de côté le 31/10/2026**, sur décision (« pas pour le moment »). À reprendre avant `L6.5`. Risque `R-07` sans parade pour l'instant, hors le plafond de dépense de la clé OpenRouter.
+
 | Rubrique | Contenu |
 |---|---|
 | Analyser avant | `routes/posts.js` (appel OpenRouter, gestion d'erreur 502) ; workflow du visuel. |
@@ -795,6 +799,8 @@ Fin du lot : critères de `L0.1` cochés, section « Tests » du README écrite,
 | Livrables | Client IA, tarifs en configuration (pas en dur), section « Coûts » dans `docs/`. |
 
 ### L0.7 — Reprise des données du navigateur
+
+> **État : ✅ livré le 31/10/2026** sur `dev`. Portée retenue : **posts et paramètres** passent sur le serveur, en vrai (tables `Post` et `Parametres`, migration `20261031100000_posts_et_parametres`) ; l'app les lit et les écrit sur le compte, et non plus dans le navigateur. Les profils restent dans le navigateur jusqu'à `L1.1`, qui étendra l'import ; lettres et offres sauvegardées étaient toujours vides (aucun écran ne les remplit). Routes : `GET /api/posts`, `GET`/`PUT /api/compte/parametres`, `POST /api/compte/import-local` (idempotent par l'identifiant local du post ; des paramètres déjà sur le compte ne sont jamais écrasés ; 200 posts au plus). Chaque post généré est gardé dans `Post` en plus du journal. Front : le stockage local passe en version 1 ; à la mise à jour, posts et paramètres sont mis de côté sous `linkedai-a-importer`, proposés par un bandeau (C-32, « Importer » ou « Plus tard »), et effacés seulement après un import réussi. Données du compte chargées à la connexion, vidées à la déconnexion. Tests : 147 backend (dont 18 sur `test/compte.test.js` : import, double import, imports simultanés, isolation, cascade), 29 front, 37 de bout en bout (stables sur 3 passages). Vérifié en vrai : navigateur préparé avec 2 posts et le ton « Startup », import, 2 posts au dashboard, ton repris par le générateur ; compte de test supprimé ensuite. **Incident** : un premier essai du test d'intégration, mal ordonné, a créé 16 comptes de test dans la base de développement ; ils ont été supprimés, la base est revenue à son état d'avant.
 
 | Rubrique | Contenu |
 |---|---|
@@ -1134,6 +1140,8 @@ Décisions `D-05` et `D-08` : la Skill est copiée dans ce dépôt, **après** s
 
 ### L4.3 — Posts côté serveur, réédition et versions
 
+> Note du 31/10/2026 : depuis `L0.7`, les posts sont déjà sur le serveur (table `Post`, sans versions). Ce lot les reprend en `Document`.
+
 | Rubrique | Contenu |
 |---|---|
 | Analyser avant | `addPost`, `PostGenerator.jsx:155` (zone modifiable), historique, `location.state.postId`, `GeneratedPostLog`. |
@@ -1403,7 +1411,7 @@ Chaque constat critique ou élevé est corrigé et retesté.
 | R-04 | Rendu du CV sous Linux différent de macOS | Moyenne, seulement à l'hébergement | Qualité du CV | Portage et comparaison des 6 profils en `L8.2` |
 | R-05 | Contenu inventé par l'IA (CV, lettre) | Moyenne | Confiance, réputation | Contrôle des faits bloquant (`L3.2`, `L3.4`, `L4.4`) |
 | R-06 | Fuite de données entre utilisateurs | Faible si testée | Critique | `TS-ISOLATION` à chaque lot, `L6.1` |
-| R-07 | Coût IA non maîtrisé | Moyenne | Financier | `UsageIA` (`L0.6`), quotas (`L6.5`), plafond de dépense de la clé |
+| R-07 | Coût IA non maîtrisé | Moyenne | Financier | `UsageIA` (`L0.6`, mis de côté le 31/10/2026), quotas (`L6.5`), plafond de dépense de la clé |
 | R-08 | Ancienne clé Google dans l'historique public | Avérée | Abus de quota | La restreindre ou la remplacer (déjà recommandé) |
 | R-09 | Refonte de la persistance sans filet | Élevée sans P0 | Régressions | `L0.1`, `L0.2` d'abord |
 | R-10 | Conditions des sources d'offres mal respectées | Moyenne | Coupure d'accès | Relecture des conditions en `L2.3`, attribution affichée |

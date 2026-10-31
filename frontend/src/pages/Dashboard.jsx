@@ -37,7 +37,7 @@ const PERIODES = [
 
 export default function Dashboard() {
   const navigate = useNavigate()
-  const { posts, scrapedProfiles, letters, savedJobs } = useAppStore()
+  const { posts, totalPosts, scrapedProfiles, letters, savedJobs } = useAppStore()
   const [periode, setPeriode] = useState('tout')
 
   const semaine = useMemo(() => comparaisonSemaine(posts), [posts])
@@ -70,7 +70,7 @@ export default function Dashboard() {
               <Accueil />
               <CarteChiffre
                 libelle="Posts générés"
-                valeur={posts.length}
+                valeur={totalPosts}
                 cetteSemaine={semaine.cetteSemaine}
                 ecart={semaine.ecart}
                 lien="/posts"

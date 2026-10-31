@@ -1,6 +1,6 @@
 /** TNR-GLOBAL 1 à 3 — Générateur de posts : génération, ressources, visuel et export PNG. */
 import { test, expect } from '@playwright/test'
-import { simulerApi, erreursConsole, lireStockage } from '../fixtures/aides.js'
+import { simulerApi, erreursConsole } from '../fixtures/aides.js'
 import { RESSOURCES } from '../fixtures/donnees.js'
 
 test.describe('TNR 1 — génération d’un post', () => {
@@ -25,11 +25,10 @@ test.describe('TNR 1 — génération d’un post', () => {
       type: 'Storytelling', description: 'Ma veille LinkedIn automatisée avec n8n', tech: 'n8n, Express', tone: 'Humain',
     })
 
-    // Persistance actuelle : le post reste dans le navigateur après actualisation.
+    // Lot L0.7 : le post est gardé dans le compte, et relu depuis le serveur après actualisation.
+    expect(api.serveur.posts[0]).toMatchObject({ type: 'Storytelling', model: 'deepseek' })
     await page.reload()
     await expect(page.getByText('Historique (1)')).toBeVisible()
-    const stockage = await lireStockage(page)
-    expect(stockage.state.posts[0]).toMatchObject({ type: 'Storytelling', model: 'deepseek' })
     expect(erreurs).toEqual([])
   })
 

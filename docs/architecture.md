@@ -4,7 +4,7 @@
 
 | Partie | Techno | Rôle | Port |
 |---|---|---|---|
-| Front | React 18, Vite 5, Tailwind 3, zustand, framer-motion | interface, données gardées dans le navigateur | 3000 |
+| Front | React 18, Vite 5, Tailwind 3, zustand, framer-motion | interface ; profils encore gardés dans le navigateur | 3000 |
 | Backend | Node.js, Express 4, Prisma 6 | seul point d'entrée : IA, relais n8n, recherche de profils, historique | 4000 |
 | Base | PostgreSQL 16 (Docker, `docker-compose.yml`) | historique des posts générés | 5433 |
 | n8n | Docker `n8nio/n8n` | ressources, visuel IA, scraper | 5678 |
@@ -26,7 +26,11 @@ Better Auth (MIT), servi par le backend sous `/api/auth/*` (`backend/src/auth/`)
 
 Côté front : `services/auth.js` (appels), `store/useSessionStore.js` (session en mémoire), `components/auth/RouteProtegee.jsx` (garde des pages). Une réponse 401 pendant l'utilisation renvoie vers `/connexion`.
 
-**Pas encore fait (lots L0.7, L1.1, L4.3)** : les posts, profils et paramètres affichés sont encore ceux gardés dans le navigateur, sans lien avec le compte. Côté serveur, les journaux de posts sont déjà rattachés au compte (lot L0.5). Deux comptes ouverts tour à tour dans le même navigateur voient donc les mêmes données locales.
+**Données du compte (lot L0.7)** : les posts et les paramètres sont sur le serveur. `RouteProtegee` les charge à la connexion (`useAppStore.chargerCompte`) avant d'ouvrir les pages ; la déconnexion ou une réponse 401 les vide de la mémoire.
+
+**Reprise du navigateur** : un navigateur utilisé avant les comptes gardait posts et paramètres dans `linkedai-storage` (version 0). Au premier chargement, le store passe en version 1 et les met de côté sous `linkedai-a-importer`. Le bandeau C-32 (`components/compte/ImportNavigateur.jsx`) propose de les importer (`POST /api/compte/import-local`) ; ils ne sont effacés qu'après un import réussi. Relancer l'import ne crée aucun doublon.
+
+**Pas encore fait (lot L1.1)** : les profils scrapés restent dans le navigateur, sans lien avec le compte. Deux comptes ouverts tour à tour dans le même navigateur voient donc les mêmes profils.
 
 ## Les trois parcours
 
@@ -36,9 +40,10 @@ Côté front : `services/auth.js` (appels), `store/useSessionStore.js` (session 
 PostGenerator.jsx → services/api.js generatePost()
   → POST /api/posts/generate            (backend/src/routes/posts.js)
       → OpenRouter, modèle deepseek      prompt construit côté serveur
-      → GeneratedPostLog en base          historique serveur
-  ← { post }
-  → addPost() dans le store              historique navigateur (50 derniers)
+      → GeneratedPostLog en base          journal technique (réponse brute)
+      → Post en base                      historique du compte
+  ← { post, enregistre }
+  → ajouterPost() dans le store          copie des 50 derniers, relue à chaque connexion
 ```
 
 ### Ressources et visuel d'un post
@@ -87,6 +92,10 @@ Toutes les routes ci-dessous, sauf `/api/health` et `/api/auth/*`, demandent une
 | GET | `/api/health` | — | `{ status: 'ok', version }` · public |
 | POST, GET | `/api/auth/*` | voir Better Auth : `sign-up/email`, `sign-in/email`, `sign-out`, `get-session`, `request-password-reset`, `reset-password` | public |
 | POST | `/api/posts/generate` | `{ type, description, tech, tone }` | `{ success, post, log }` · 400 si description vide ou > 2000 caractères · 502 si OpenRouter échoue |
+| GET | `/api/posts` | — (un `?userId=` est ignoré) | `{ posts, total }` : les 50 derniers posts **du compte connecté** |
+| GET | `/api/compte/parametres` | — | `{ parametres: { defaultTone, scraperWebhook } }`, valeurs par défaut si rien n'est enregistré |
+| PUT | `/api/compte/parametres` | `{ defaultTone?, scraperWebhook? }` | `{ parametres }` · 400 si le webhook n'est pas une URL http(s) |
+| POST | `/api/compte/import-local` | `{ posts?, settings? }` du navigateur (200 posts au plus) | `{ posts: { importes, dejaLa, ecartes }, parametres: 'importes' \| 'conserves' }` |
 | GET | `/api/posts/logs` | — (un `?userId=` est ignoré) | `{ success, logs }` : les 50 derniers journaux **du compte connecté** |
 | POST | `/api/profils/rechercher` | `{ requete, lieu?, pages? }` (1 à 10 pages) | `{ profils, rejetes, source, secours }` · 400 si paramètres invalides · 502 si aucun fournisseur ne répond |
 | POST | `/api/n8n/:nom` | relayé tel quel | réponse de n8n · 404 si `nom` n'est pas autorisé |
@@ -104,7 +113,9 @@ Webhooks autorisés : `resource-suggestions`, `generate-visual`, `scraper`.
 
 | Où | Quoi | Durée de vie |
 |---|---|---|
-| Navigateur, `localStorage` « linkedai-storage » | posts (50), profils (200), lettres (20), offres, paramètres | jusqu'à effacement du navigateur |
+| Navigateur, `localStorage` « linkedai-storage » (version 1) | profils (200), lettres (20), offres | jusqu'à effacement du navigateur |
+| Navigateur, `localStorage` « linkedai-a-importer » | posts et paramètres d'avant les comptes, en attente d'import | effacé après un import réussi |
+| PostgreSQL, tables `Post` et `Parametres` | posts du compte, ton par défaut, webhook du scraper | permanente ; supprimés avec le compte |
 | PostgreSQL (conteneur `linkedai-postgres`, volume `linkedai-pgdata`), table `GeneratedPostLog` | chaque post généré, relié au compte qui l'a demandé (`userId` tiré de la session, jamais du corps ni de l'URL) ; les journaux d'avant les comptes n'ont pas de propriétaire et ne s'affichent pour personne | permanente ; supprimés avec le compte |
 | `~/n8n-data` | workflows et comptes n8n | permanente |
 

@@ -41,7 +41,8 @@ Navigateur (front React)
 
 - Le front ne contient **aucune clé**. Il n'appelle que le backend (`/api`).
 - n8n reste privé : seul le backend lui parle.
-- Les données de l'utilisateur (posts, profils, paramètres) sont aussi gardées dans le navigateur.
+- Les posts et les paramètres sont rattachés au compte, en base. Les profils scrapés restent dans le navigateur jusqu'au lot `L1.1`.
+- **Reprise** : un navigateur utilisé avant les comptes propose, à la connexion, d'importer ses posts et ses paramètres dans le compte. Rien n'est effacé avant la fin de l'import, et le relancer ne crée aucun doublon.
 
 Détails : [docs/architecture.md](docs/architecture.md).
 
@@ -208,7 +209,7 @@ Le détail, avec les critères d'acceptation et les tests de chaque lot, est dan
 
 | Phase | Contenu | État |
 |---|---|---|
-| 0 — Socle | tests et CI, PostgreSQL, comptes, isolation des données, coût IA par utilisateur | `L0.1` à `L0.5` ✅ · `L0.6`, `L0.7` à venir |
+| 0 — Socle | tests et CI, PostgreSQL, comptes, isolation des données, reprise des données du navigateur | ✅ close · `L0.6` (coût IA) mis de côté |
 | 1 — Scraping fiable | profils normalisés ✅, remplacement de Google (Serper, puis Brave) 🛠 clés à mettre, profils en base, fiche détaillée | en cours |
 | 2 — Offres d'emploi | saisie, sources autorisées (France Travail, Adzuna, Remotive), filtres | à venir |
 | 3 — CV et Skill ATS | profil professionnel, CV ATS contrôlé, adapté à une offre, versions | à venir |

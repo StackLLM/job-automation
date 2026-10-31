@@ -1,20 +1,48 @@
 /**
- * Données de l'utilisateur, gardées dans le navigateur (localStorage, clé « linkedai-storage »).
- * Posts, profils scrapés, lettres, offres sauvegardées et paramètres.
+ * Données de l'utilisateur.
+ * - Posts et paramètres : sur le serveur, rattachés au compte (lot L0.7). Le store n'en garde qu'une copie,
+ *   chargée à la connexion (chargerCompte) et vidée à la déconnexion (viderCompte).
+ * - Profils scrapés, lettres, offres sauvegardées : encore dans le navigateur (localStorage,
+ *   clé « linkedai-storage »), jusqu'aux lots L1.1 et L4.3.
  */
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { listerPosts, lireParametres, enregistrerParametres } from '../services/api'
+import { PARAMETRES_PAR_DEFAUT, extraireAImporter, mettreDeCote } from '../lib/importLocal'
+
+const POSTS_AFFICHES = 50
 
 const useAppStore = create(
   persist(
     (set, get) => ({
-      // ─── Posts générés ────────────────────────────────
+      // ─── Données du compte ────────────────────────────
+      // compte : « vide » (rien de chargé), « chargement », « pret » ; compteDe : l'utilisateur chargé.
+      compte: 'vide',
+      compteDe: null,
+
+      chargerCompte: async (userId) => {
+        set({ compte: 'chargement', compteDe: userId })
+        try {
+          const [{ posts, total }, parametres] = await Promise.all([listerPosts(), lireParametres()])
+          if (get().compteDe !== userId) return // un autre compte a pris la place entre-temps
+          set({ posts, totalPosts: total, settings: { ...PARAMETRES_PAR_DEFAUT, ...parametres }, compte: 'pret' })
+        } catch (err) {
+          if (get().compteDe === userId) set({ compte: 'pret' })
+          throw err
+        }
+      },
+
+      viderCompte: () => set({ posts: [], totalPosts: 0, settings: { ...PARAMETRES_PAR_DEFAUT }, compte: 'vide', compteDe: null }),
+
+      // ─── Posts générés (copie de ceux du compte) ──────
       posts: [],
-      addPost: (post) =>
+      totalPosts: 0,
+      // post : la ligne renvoyée par le serveur après la génération.
+      ajouterPost: (post) =>
         set((state) => ({
-          posts: [{ ...post, id: Date.now(), createdAt: new Date().toISOString() }, ...state.posts],
+          posts: [post, ...state.posts].slice(0, POSTS_AFFICHES),
+          totalPosts: state.totalPosts + 1,
         })),
-      clearPosts: () => set({ posts: [] }),
 
       // ─── Profils scrapés ──────────────────────────────
       scrapedProfiles: [],
@@ -43,21 +71,32 @@ const useAppStore = create(
         }
       },
 
-      // ─── Settings ─────────────────────────────────────
-      settings: {
-        defaultTone: 'Professionnel', // une valeur de TONS_POST (lib/posts.js)
-        scraperWebhook: '',           // vide : le scraper passe par le backend
+      // ─── Paramètres (copie de ceux du compte) ─────────
+      // defaultTone : une valeur de TONS_POST (lib/posts.js) ; scraperWebhook vide : le scraper passe par le backend.
+      settings: { ...PARAMETRES_PAR_DEFAUT },
+      enregistrerParametres: async (partiel) => {
+        const parametres = await enregistrerParametres(partiel)
+        set({ settings: { ...PARAMETRES_PAR_DEFAUT, ...parametres } })
       },
-      updateSettings: (partial) =>
-        set((state) => ({ settings: { ...state.settings, ...partial } })),
     }),
     {
       name: 'linkedai-storage',
+      // Version 1 (lot L0.7) : posts et paramètres quittent le navigateur. Ceux d'une version 0
+      // sont mis de côté pour être importés dans le compte, puis retirés de cette clé.
+      version: 1,
+      migrate: (etat, version) => {
+        if (version < 1) {
+          mettreDeCote(extraireAImporter(etat))
+          const reste = { ...etat }
+          delete reste.posts
+          delete reste.settings
+          return reste
+        }
+        return etat
+      },
       partialize: (state) => ({
-        posts: state.posts.slice(0, 50),       // garde les 50 derniers
         letters: state.letters.slice(0, 20),
         savedJobs: state.savedJobs,
-        settings: state.settings,
         scrapedProfiles: state.scrapedProfiles.slice(0, 200),
       }),
     }
