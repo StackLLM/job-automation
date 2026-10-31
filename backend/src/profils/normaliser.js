@@ -129,3 +129,24 @@ export function normaliserLot(bruts, source) {
   }
   return { profils, rejetes }
 }
+
+// Profil déjà découpé, tel que le gardait le navigateur ou que le renvoie un webhook n8n réglé à la main
+// ({ name, title, link, snippet, image } ; plus poste, entreprise, lieu, source s'il venait du backend).
+// Lot L1.1 : sert à l'import du navigateur et à l'enregistrement d'un lot. Rien n'est déduit du titre :
+// sans poste séparé, le titre entier devient le poste, comme il s'affichait.
+export function depuisFormeLocale(p, sourceParDefaut) {
+  const urlNormalisee = normaliserUrl(p?.link ?? p?.url ?? p?.urlNormalisee)
+  if (!urlNormalisee) return { ok: false, raison: 'url-invalide' }
+  const extrait = nettoyer(p.snippet ?? p.extrait)
+  const resultat = SchemaProfil.safeParse({
+    urlNormalisee,
+    nom: nettoyer(p.name ?? p.nom),
+    poste: nettoyer(p.poste !== undefined ? p.poste : p.title),
+    entreprise: nettoyer(p.entreprise),
+    lieu: nettoyer(p.lieu) ?? extraireLieu(extrait),
+    extrait,
+    image: p.image ? urlImage(p.image) : null,
+    source: nettoyer(p.source) ?? sourceParDefaut,
+  })
+  return resultat.success ? { ok: true, profil: resultat.data } : { ok: false, raison: 'schema' }
+}

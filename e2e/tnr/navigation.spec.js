@@ -1,7 +1,7 @@
 /** TNR-GLOBAL 5 à 9 — Dashboard, recherche globale, paramètres, 404, mobile, et toutes les routes. */
 import { test, expect } from '@playwright/test'
 import { simulerApi, erreursConsole, prechargerNavigateur } from '../fixtures/aides.js'
-import { etatNavigateur, postsDuCompte, PROFILS } from '../fixtures/donnees.js'
+import { etatNavigateur, postsDuCompte, profilsDuCompte, PROFILS } from '../fixtures/donnees.js'
 
 test.describe('TNR 5 — dashboard', () => {
   test('montre les états vides sur un navigateur neuf', async ({ page }) => {
@@ -13,9 +13,9 @@ test.describe('TNR 5 — dashboard', () => {
     expect(erreurs).toEqual([])
   })
 
-  test('reflète les posts du compte et les profils du navigateur', async ({ page }) => {
+  test('reflète les posts et les profils du compte', async ({ page }) => {
     const erreurs = erreursConsole(page)
-    await simulerApi(page, {}, { posts: postsDuCompte() })
+    await simulerApi(page, {}, { posts: postsDuCompte(), profils: profilsDuCompte() })
     await prechargerNavigateur(page, etatNavigateur())
     await page.goto('./dashboard')
 
@@ -89,7 +89,7 @@ test.describe('TNR 9 — mobile (375 px)', () => {
 
   test('barre de navigation en bas, sans défilement horizontal, sur chaque page', async ({ page }) => {
     const erreurs = erreursConsole(page)
-    await simulerApi(page, {}, { posts: postsDuCompte() })
+    await simulerApi(page, {}, { posts: postsDuCompte(), profils: profilsDuCompte() })
     await prechargerNavigateur(page, etatNavigateur())
     await page.goto('./dashboard')
 

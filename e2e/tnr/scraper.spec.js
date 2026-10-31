@@ -1,11 +1,12 @@
 /**
  * TNR-GLOBAL 4 — Scraper : recherche par le backend (profils normalisés, lot L1.2), filtre, export CSV,
- * persistance ; et webhook n8n réglé à la main dans Paramètres, appelé directement comme avant.
+ * profils gardés sur le compte (lot L1.1) ; et webhook n8n réglé à la main dans Paramètres, appelé directement,
+ * dont les profils sont ensuite enregistrés par le backend.
  */
 import { test, expect } from '@playwright/test'
 import { readFileSync } from 'node:fs'
-import { simulerApi, erreursConsole, lireStockage, prechargerNavigateur } from '../fixtures/aides.js'
-import { PROFILS, PROFILS_NORMALISES, etatNavigateur } from '../fixtures/donnees.js'
+import { simulerApi, erreursConsole, lireStockage } from '../fixtures/aides.js'
+import { PROFILS, PROFILS_NORMALISES, profilsDuCompte } from '../fixtures/donnees.js'
 
 test('lance une recherche, affiche, filtre, exporte et garde les profils', async ({ page }) => {
   const erreurs = erreursConsole(page)
@@ -46,13 +47,35 @@ test('lance une recherche, affiche, filtre, exporte et garde les profils', async
     expect(csv).toContain(p.urlNormalisee)
   }
 
-  // Persistance actuelle : dans le navigateur, après actualisation, avec les champs normalisés en plus.
+  // Lot L1.1 : les profils sont sur le compte, relus après actualisation ; le navigateur n'en garde plus.
+  expect(api.serveur.profils).toHaveLength(PROFILS_NORMALISES.length)
   await page.reload()
   await expect(page.getByText(`Profils (${PROFILS_NORMALISES.length})`)).toBeVisible()
-  const stockes = (await lireStockage(page)).state.scrapedProfiles
-  expect(stockes).toHaveLength(PROFILS_NORMALISES.length)
-  expect(stockes[0]).toMatchObject({ name: 'Amina Test', link: 'https://www.linkedin.com/in/amina-test', poste: 'Ingénieure Cloud', entreprise: 'Exemple SA', source: 'n8n' })
+  await expect(page.getByRole('cell', { name: 'Ingénieure Cloud · Exemple SA' })).toBeVisible()
+  expect((await lireStockage(page)).state).not.toHaveProperty('scrapedProfiles')
   expect(erreurs).toEqual([])
+})
+
+test('relancer la même recherche n’ajoute aucun doublon', async ({ page }) => {
+  const api = await simulerApi(page)
+  await page.goto('./scraper')
+  await page.getByRole('button', { name: 'Lancer le scraper' }).click()
+  await expect(page.getByText(`Profils (${PROFILS_NORMALISES.length})`)).toBeVisible()
+  await page.getByRole('button', { name: 'Lancer le scraper' }).click()
+  await expect(page.getByText(`(${PROFILS_NORMALISES.length} déjà dans ta liste)`)).toBeVisible()
+  await expect(page.getByText(`Profils (${PROFILS_NORMALISES.length})`)).toBeVisible()
+  expect(api.serveur.profils).toHaveLength(PROFILS_NORMALISES.length)
+})
+
+test('« Vider » supprime les profils du compte', async ({ page }) => {
+  const api = await simulerApi(page, {}, { profils: profilsDuCompte() })
+  await page.goto('./scraper')
+  await expect(page.getByText(`Profils (${PROFILS_NORMALISES.length})`)).toBeVisible()
+  await page.getByRole('button', { name: 'Vider' }).click()
+  await expect(page.getByText('Aucun profil pour l\'instant')).toBeVisible()
+  expect(api.vers('profils').filter((a) => a.methode === 'DELETE')).toHaveLength(1)
+  await page.reload()
+  await expect(page.getByText('Aucun profil pour l\'instant')).toBeVisible()
 })
 
 test('signale les résultats ignorés faute de lien de profil valide', async ({ page }) => {
@@ -93,10 +116,6 @@ test('un webhook réglé dans Paramètres est appelé directement, sans passer p
     appelsWebhook.push(route.request().postDataJSON())
     return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ profiles: PROFILS }) })
   })
-  const etat = etatNavigateur()
-  etat.state.scrapedProfiles = []
-  await prechargerNavigateur(page, etat)
-
   await page.goto('./scraper')
   await page.getByRole('button', { name: 'Lancer le scraper' }).click()
 
@@ -104,4 +123,29 @@ test('un webhook réglé dans Paramètres est appelé directement, sans passer p
   expect(appelsWebhook).toHaveLength(1)
   expect(appelsWebhook[0]).toMatchObject({ query: 'ingenieur cloud maroc', location: 'maroc', maxPages: 1 })
   expect(api.vers('profils/rechercher')).toHaveLength(0)
+  // Les profils du webhook sont gardés sur le compte par le backend.
+  expect(api.vers('profils/lot')[0].corps).toMatchObject({ requete: 'ingenieur cloud maroc', lieu: 'maroc', profils: PROFILS })
+  expect(api.serveur.profils.map((p) => p.source)).toEqual(['webhook', 'webhook'])
+})
+
+test('TF L1.1 — recherche, actualisation, déconnexion, reconnexion : les mêmes profils', async ({ page }) => {
+  await simulerApi(page)
+  await page.goto('./scraper')
+  await page.getByRole('button', { name: 'Lancer le scraper' }).click()
+  await expect(page.getByText(`Profils (${PROFILS_NORMALISES.length})`)).toBeVisible()
+
+  await page.reload()
+  await expect(page.getByText(`Profils (${PROFILS_NORMALISES.length})`)).toBeVisible()
+
+  await page.goto('./settings')
+  await page.getByRole('button', { name: 'Se déconnecter' }).click()
+  await expect(page).toHaveURL(/\/connexion$/)
+  await page.getByLabel('E-mail').fill('amina@exemple.test')
+  await page.getByLabel('Mot de passe').fill('mot-de-passe-solide-1')
+  await page.getByRole('button', { name: 'Se connecter' }).click()
+  await expect(page).toHaveURL(/\/dashboard$/)
+
+  await page.goto('./scraper')
+  await expect(page.getByText(`Profils (${PROFILS_NORMALISES.length})`)).toBeVisible()
+  for (const p of PROFILS_NORMALISES) await expect(page.getByRole('cell', { name: p.nom })).toBeVisible()
 })

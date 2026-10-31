@@ -827,6 +827,8 @@ Fin du lot : critères de `L0.1` cochés, section « Tests » du README écrite,
 
 ### L1.1 — Persistance serveur des profils
 
+> **État : ✅ livré le 31/10/2026** sur `dev`. Tables `Profil` et `RechercheProfils` (migration `20261031140000_profils_du_compte`, écrite à la main : le diff automatique de Prisma donnait un script faux). `POST /api/profils/rechercher` enregistre la recherche et ses profils ; `POST /api/profils/lot` enregistre ceux d'un webhook réglé à la main ; `GET /api/profils` est paginé (200 au plus par page) ; `DELETE /api/profils/:id` (404 hors du compte) et `DELETE /api/profils` (« Vider »). La contrainte `unique (userId, urlNormalisee)` est posée **dès ce lot**, sans quoi l'import relancé créerait des doublons : un profil déjà connu n'est ni recréé ni modifié (sa mise à jour reste pour `L1.3`). Front : le stockage local passe en version 2, sans profils ; `chargerCompte` lit tous les profils page par page ; la liste est relue après chaque recherche ; le bandeau d'import reprend aussi les profils. Plus de troncature à 200 (C1, C2, C6 levées ; C3 en partie). `PATCH /api/profils/:id` n'est pas fait : il n'y a encore rien à modifier (note et étiquettes arrivent en `L1.5`). Tests : 163 backend (dont 16 sur `test/profilsCompte.test.js` : 300 profils sans perte, pagination, doublons, lot, import, isolation, cascade), 31 front, 41 de bout en bout (stables sur 3 passages), dont recherche → actualisation → déconnexion → reconnexion. Vérifié en vrai : recherche n8n réelle, 10 profils enregistrés, 0 nouveau au second passage ; mêmes 10 profils après déconnexion et reconnexion ; import d'un navigateur version 1 : 1 nouveau, 1 déjà connu. Compte de test supprimé ensuite. **Limite** : le front charge tous les profils à la connexion ; à revoir au-delà de quelques milliers.
+
 | Rubrique | Contenu |
 |---|---|
 | Analyser avant | `useAppStore.js` (`addProfiles`, `partialize`), `Scraper.jsx`, `exportCsv.js`, `RechercheGlobale.jsx` et `Dashboard.jsx` (lecteurs de `scrapedProfiles`). |
@@ -860,6 +862,8 @@ Fin du lot : critères de `L0.1` cochés, section « Tests » du README écrite,
 | Livrables | Interface, normalisation, jeu de tests d'échantillons. |
 
 ### L1.3 — Dédoublonnage et mise à jour
+
+> Note du 31/10/2026 : la contrainte `unique (userId, urlNormalisee)` et le compte « nouveaux / déjà là » existent depuis `L1.1`. Reste : la mise à jour des profils déjà connus et le message « X nouveaux, Y mis à jour, Z rejetés ».
 
 | Rubrique | Contenu |
 |---|---|
@@ -927,6 +931,8 @@ Lot **avancé et daté** : en service **avant le 1er janvier 2027** (section 8.5
 | Livrables | États, messages, recette. |
 
 ### L1.7 — Suppression des profils par l'utilisateur
+
+> Note du 31/10/2026 : `DELETE /api/profils/:id` et `DELETE /api/profils` existent depuis `L1.1` (le second sert au bouton « Vider »). Reste : la sélection multiple et l'interface.
 
 Décision `D-11` : **aucune suppression automatique**. Seul l'utilisateur supprime ses profils.
 

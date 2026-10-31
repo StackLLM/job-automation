@@ -39,9 +39,19 @@ export const postsDuCompte = ({ maintenant = new Date() } = {}) => [
   { id: 'p-2', type: 'Storytelling', model: 'deepseek', content: 'Ma première mission cloud\nRécit…', createdAt: new Date(maintenant.getTime() - 86_400_000).toISOString() },
 ]
 
-// Contenu de « linkedai-storage » (zustand persist, version 1) : depuis le lot L0.7, le navigateur ne garde
-// plus que les profils, les lettres et les offres.
+// Profils tels que le serveur les garde sur le compte (GET /api/profils), plus récents d'abord.
+export const profilsDuCompte = () =>
+  PROFILS_NORMALISES.map((p, i) => ({ ...p, id: `pr-${i + 1}`, rechercheId: 'r-1', createdAt: new Date(Date.now() - i).toISOString() }))
+
+// Contenu de « linkedai-storage » (zustand persist, version 2) : depuis le lot L1.1, le navigateur ne garde
+// plus que les lettres et les offres.
 export const etatNavigateur = () => ({
+  state: { letters: [], savedJobs: [] },
+  version: 2,
+})
+
+// Navigateur de la version 1 (après L0.7, avant L1.1) : les profils y sont encore, à importer.
+export const etatNavigateurV1 = () => ({
   state: { letters: [], savedJobs: [], scrapedProfiles: PROFILS },
   version: 1,
 })

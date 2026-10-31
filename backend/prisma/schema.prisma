@@ -53,6 +53,49 @@ model Parametres {
   updatedAt      DateTime @updatedAt
 }
 
+// ─── Profils trouvés (lot L1.1) ─────────────────────────────────────────────
+// Une recherche lancée par l'utilisateur, et les profils qu'elle a enregistrés.
+
+model RechercheProfils {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  requete   String
+  lieu      String?
+  pages     Int?
+  // serper, brave, n8n, ou webhook (n8n réglé à la main dans Paramètres)
+  source    String
+  trouves   Int
+  rejetes   Int
+  createdAt DateTime @default(now())
+  profils   Profil[]
+
+  @@index([userId, createdAt])
+}
+
+// Une URL de profil n'apparaît qu'une fois par compte. La fusion des informations
+// d'un profil déjà connu viendra avec le lot L1.3 ; d'ici là, la première version reste.
+model Profil {
+  id            String            @id @default(cuid())
+  userId        String
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rechercheId   String?
+  recherche     RechercheProfils? @relation(fields: [rechercheId], references: [id], onDelete: SetNull)
+  urlNormalisee String
+  nom           String?
+  poste         String?
+  entreprise    String?
+  lieu          String?
+  extrait       String?
+  image         String?
+  source        String
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@unique([userId, urlNormalisee])
+  @@index([userId, createdAt])
+}
+
 // ─── Comptes et sessions (lot L0.4) ─────────────────────────────────────────
 // Tables attendues par Better Auth (adaptateur Prisma). Les mots de passe sont hachés
 // par Better Auth et rangés dans Account.password ; les sessions vivent en base.
@@ -70,6 +113,8 @@ model User {
   postLogs      GeneratedPostLog[]
   posts         Post[]
   parametres    Parametres?
+  profils       Profil[]
+  recherches    RechercheProfils[]
 
   @@map("user")
 }

@@ -3,8 +3,8 @@
  * - simulerApi : remplace le backend (posts, n8n, profils, comptes) par des réponses fixes et note chaque appel ;
  *   tout appel /api non prévu échoue, pour qu'un nouvel appel ne passe pas inaperçu.
  *   Par défaut, un utilisateur est connecté (UTILISATEUR) ; { connecte: false } simule un visiteur.
- *   Les posts et paramètres du compte (lot L0.7) vivent dans un petit serveur en mémoire :
- *   { posts, parametres } fixent son contenu de départ ; api.serveur permet de le lire.
+ *   Les posts, paramètres (lot L0.7) et profils (lot L1.1) du compte vivent dans un petit serveur en mémoire :
+ *   { posts, parametres, profils } fixent son contenu de départ ; api.serveur permet de le lire.
  * - Les ressources externes (police Google, html-to-image sur jsDelivr) sont servies en local :
  *   la suite tourne sans Internet.
  * - erreursConsole : erreurs JavaScript et console de la page.
@@ -25,18 +25,44 @@ const REPONSES = {
   'n8n/resource-suggestions': () => ({ status: 200, json: RESSOURCES }),
   'n8n/generate-visual': () => ({ status: 200, json: VISUEL }),
   'n8n/scraper': () => ({ status: 200, json: { profiles: PROFILS } }),
-  'profils/rechercher': () => ({ status: 200, json: { profils: PROFILS_NORMALISES, rejetes: 0, source: 'n8n' } }),
 }
 
-export async function simulerApi(page, remplacements = {}, { connecte = true, posts = [], parametres = {} } = {}) {
+// Profil du navigateur ou d'un webhook ({ name, title, link… }) → forme serveur, comme depuisFormeLocale du backend.
+const depuisFormeLocale = (p, source) => ({
+  urlNormalisee: p.link, nom: p.name ?? null, poste: p.poste !== undefined ? p.poste : p.title ?? null,
+  entreprise: p.entreprise ?? null, lieu: p.lieu ?? null, extrait: p.snippet ?? null, image: p.image ?? null, source: p.source ?? source,
+})
+
+export async function simulerApi(page, remplacements = {}, { connecte = true, posts = [], parametres = {}, profils = [] } = {}) {
   const appels = []
-  const serveur = { posts: [...posts], parametres: { defaultTone: 'Professionnel', scraperWebhook: '', ...parametres } }
+  const serveur = { posts: [...posts], parametres: { defaultTone: 'Professionnel', scraperWebhook: '', ...parametres }, profils: [...profils] }
+  // Même règle que le backend : une URL n'est gardée qu'une fois ; les nouveaux passent devant, dans l'ordre reçu.
+  const enregistrerProfils = (lot) => {
+    const connues = new Set(serveur.profils.map((p) => p.urlNormalisee))
+    const nouveaux = lot.filter((p) => p.urlNormalisee && !connues.has(p.urlNormalisee))
+      .map((p, i) => ({ ...p, id: `pr-${serveur.profils.length + i + 1}`, createdAt: new Date().toISOString() }))
+    serveur.profils.unshift(...nouveaux)
+    return { nouveaux: nouveaux.length, dejaLa: lot.length - nouveaux.length }
+  }
   const DONNEES = {
     'posts': () => ({ status: 200, json: { posts: serveur.posts.slice(0, 50), total: serveur.posts.length } }),
     'posts/generate': (corps) => {
       const enregistre = { id: `p-${serveur.posts.length + 1}`, type: corps.type, model: 'deepseek', content: POST_GENERE, createdAt: new Date().toISOString() }
       serveur.posts.unshift(enregistre)
       return { status: 200, json: { success: true, post: POST_GENERE, enregistre } }
+    },
+    'profils': (_corps, methode) => {
+      if (methode === 'DELETE') {
+        const supprimes = serveur.profils.length
+        serveur.profils = []
+        return { status: 200, json: { supprimes } }
+      }
+      return { status: 200, json: { profils: serveur.profils.slice(0, 200), total: serveur.profils.length, page: 1, parPage: 200 } }
+    },
+    'profils/rechercher': () => ({ status: 200, json: { profils: PROFILS_NORMALISES, rejetes: 0, source: 'n8n', secours: false, ...enregistrerProfils(PROFILS_NORMALISES) } }),
+    'profils/lot': (corps) => {
+      const valides = corps.profils.filter((p) => p.link)
+      return { status: 200, json: { ...enregistrerProfils(valides.map((p) => depuisFormeLocale(p, 'webhook'))), rejetes: corps.profils.length - valides.length } }
     },
     'compte/parametres': (corps, methode) => {
       if (methode === 'PUT') serveur.parametres = { ...serveur.parametres, ...corps }
@@ -48,7 +74,12 @@ export async function simulerApi(page, remplacements = {}, { connecte = true, po
       const nouveaux = (corps.posts || []).filter((p) => !deja.has(String(p.id)))
       serveur.posts.push(...nouveaux.map((p) => ({ ...p, id: `i-${p.id}`, idLocal: String(p.id) })))
       serveur.posts.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-      return { status: 200, json: { posts: { importes: nouveaux.length, dejaLa: (corps.posts || []).length - nouveaux.length, ecartes: 0 }, parametres: 'conserves' } }
+      const profilsImportes = enregistrerProfils((corps.profils || []).map((p) => depuisFormeLocale(p, 'navigateur')))
+      return { status: 200, json: {
+        posts: { importes: nouveaux.length, dejaLa: (corps.posts || []).length - nouveaux.length, ecartes: 0 },
+        parametres: 'conserves',
+        profils: { importes: profilsImportes.nouveaux, dejaLa: profilsImportes.dejaLa, ecartes: 0 },
+      } }
     },
   }
   // La session suit les connexions et déconnexions simulées pendant le test.

@@ -41,8 +41,8 @@ Navigateur (front React)
 
 - Le front ne contient **aucune clé**. Il n'appelle que le backend (`/api`).
 - n8n reste privé : seul le backend lui parle.
-- Les posts et les paramètres sont rattachés au compte, en base. Les profils scrapés restent dans le navigateur jusqu'au lot `L1.1`.
-- **Reprise** : un navigateur utilisé avant les comptes propose, à la connexion, d'importer ses posts et ses paramètres dans le compte. Rien n'est effacé avant la fin de l'import, et le relancer ne crée aucun doublon.
+- Les posts, les paramètres et les profils scrapés sont rattachés au compte, en base : on les retrouve après actualisation, déconnexion ou sur un autre navigateur. Une même URL de profil n'est gardée qu'une fois.
+- **Reprise** : un navigateur utilisé avant les comptes propose, à la connexion, d'importer ses posts, ses paramètres et ses profils dans le compte. Rien n'est effacé avant la fin de l'import, et le relancer ne crée aucun doublon.
 
 Détails : [docs/architecture.md](docs/architecture.md).
 
@@ -210,7 +210,7 @@ Le détail, avec les critères d'acceptation et les tests de chaque lot, est dan
 | Phase | Contenu | État |
 |---|---|---|
 | 0 — Socle | tests et CI, PostgreSQL, comptes, isolation des données, reprise des données du navigateur | ✅ close · `L0.6` (coût IA) mis de côté |
-| 1 — Scraping fiable | profils normalisés ✅, remplacement de Google (Serper, puis Brave) 🛠 clés à mettre, profils en base, fiche détaillée | en cours |
+| 1 — Scraping fiable | profils normalisés ✅, profils en base ✅, remplacement de Google (Serper, puis Brave) 🛠 clés à mettre, doublons, fiche détaillée | en cours |
 | 2 — Offres d'emploi | saisie, sources autorisées (France Travail, Adzuna, Remotive), filtres | à venir |
 | 3 — CV et Skill ATS | profil professionnel, CV ATS contrôlé, adapté à une offre, versions | à venir |
 | 4 — Lettres et posts | lettres adaptées, posts et visuels enregistrés et versionnés | à venir |

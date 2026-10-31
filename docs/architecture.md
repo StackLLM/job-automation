@@ -4,7 +4,7 @@
 
 | Partie | Techno | Rôle | Port |
 |---|---|---|---|
-| Front | React 18, Vite 5, Tailwind 3, zustand, framer-motion | interface ; profils encore gardés dans le navigateur | 3000 |
+| Front | React 18, Vite 5, Tailwind 3, zustand, framer-motion | interface ; copie des données du compte | 3000 |
 | Backend | Node.js, Express 4, Prisma 6 | seul point d'entrée : IA, relais n8n, recherche de profils, historique | 4000 |
 | Base | PostgreSQL 16 (Docker, `docker-compose.yml`) | historique des posts générés | 5433 |
 | n8n | Docker `n8nio/n8n` | ressources, visuel IA, scraper | 5678 |
@@ -30,7 +30,7 @@ Côté front : `services/auth.js` (appels), `store/useSessionStore.js` (session 
 
 **Reprise du navigateur** : un navigateur utilisé avant les comptes gardait posts et paramètres dans `linkedai-storage` (version 0). Au premier chargement, le store passe en version 1 et les met de côté sous `linkedai-a-importer`. Le bandeau C-32 (`components/compte/ImportNavigateur.jsx`) propose de les importer (`POST /api/compte/import-local`) ; ils ne sont effacés qu'après un import réussi. Relancer l'import ne crée aucun doublon.
 
-**Pas encore fait (lot L1.1)** : les profils scrapés restent dans le navigateur, sans lien avec le compte. Deux comptes ouverts tour à tour dans le même navigateur voient donc les mêmes profils.
+**Profils (lot L1.1)** : sur le serveur aussi. À la connexion, `chargerCompte` lit tous les profils du compte page par page (200 par page) ; après une recherche, la liste est relue en entier. Le navigateur ne garde plus que les lettres et les offres (stockage version 2) ; ses anciens profils passent par le même import.
 
 ## Les trois parcours
 
@@ -69,9 +69,14 @@ Scraper.jsx → services/api.js rechercherProfils()
           3. n8n : workflow linkedin-scraper-webhook → Google Custom Search, en dernier secours
           10 profils par page, 10 pages au plus ; arrêt à la première page vide
       → normalisation                                            (profils/normaliser.js)
-  ← { profils: [{ urlNormalisee, nom, poste, entreprise, lieu, extrait, image, source }], rejetes, source, secours }
-  → versProfilLocal() puis addProfiles() dans le store           (forme gardée : name, title, link, snippet…)
+      → enregistrement sur le compte : RechercheProfils + Profil  (profils/service.js)
+          une URL n'est gardée qu'une fois par compte (contrainte unique) ; un profil déjà connu n'est pas modifié
+  ← { profils: [{ urlNormalisee, nom, poste, entreprise, lieu, extrait, image, source }], rejetes, source, secours, nouveaux, dejaLa, rechercheId }
+  → rechargerProfils() : GET /api/profils, toutes les pages, puis versProfilLocal()   (forme lue : name, title, link, snippet…)
 ```
+
+Webhook réglé à la main dans Paramètres : le navigateur l'appelle directement, puis envoie les profils reçus
+à `POST /api/profils/lot`, qui les valide (`depuisFormeLocale`) et les enregistre avec la source « webhook ».
 
 La normalisation :
 
@@ -97,7 +102,11 @@ Toutes les routes ci-dessous, sauf `/api/health` et `/api/auth/*`, demandent une
 | PUT | `/api/compte/parametres` | `{ defaultTone?, scraperWebhook? }` | `{ parametres }` · 400 si le webhook n'est pas une URL http(s) |
 | POST | `/api/compte/import-local` | `{ posts?, settings? }` du navigateur (200 posts au plus) | `{ posts: { importes, dejaLa, ecartes }, parametres: 'importes' \| 'conserves' }` |
 | GET | `/api/posts/logs` | — (un `?userId=` est ignoré) | `{ success, logs }` : les 50 derniers journaux **du compte connecté** |
-| POST | `/api/profils/rechercher` | `{ requete, lieu?, pages? }` (1 à 10 pages) | `{ profils, rejetes, source, secours }` · 400 si paramètres invalides · 502 si aucun fournisseur ne répond |
+| POST | `/api/profils/rechercher` | `{ requete, lieu?, pages? }` (1 à 10 pages) | `{ profils, rejetes, source, secours, nouveaux, dejaLa, rechercheId }` · 400 si paramètres invalides · 502 si aucun fournisseur ne répond · 500 si l'enregistrement échoue |
+| GET | `/api/profils` | `?page=1&parPage=50` (200 au plus) | `{ profils, total, page, parPage }` : profils **du compte connecté**, plus récents d'abord |
+| POST | `/api/profils/lot` | `{ profils, requete?, lieu? }` (500 au plus) | `{ nouveaux, dejaLa, rejetes }` |
+| DELETE | `/api/profils/:id` | — | 204 · 404 si le profil n'existe pas ou n'est pas au compte |
+| DELETE | `/api/profils` | — | `{ supprimes }` : tous les profils du compte (« Vider ») |
 | POST | `/api/n8n/:nom` | relayé tel quel | réponse de n8n · 404 si `nom` n'est pas autorisé |
 
 Webhooks autorisés : `resource-suggestions`, `generate-visual`, `scraper`.
@@ -113,9 +122,10 @@ Webhooks autorisés : `resource-suggestions`, `generate-visual`, `scraper`.
 
 | Où | Quoi | Durée de vie |
 |---|---|---|
-| Navigateur, `localStorage` « linkedai-storage » (version 1) | profils (200), lettres (20), offres | jusqu'à effacement du navigateur |
-| Navigateur, `localStorage` « linkedai-a-importer » | posts et paramètres d'avant les comptes, en attente d'import | effacé après un import réussi |
+| Navigateur, `localStorage` « linkedai-storage » (version 2) | lettres (20), offres | jusqu'à effacement du navigateur |
+| Navigateur, `localStorage` « linkedai-a-importer » | posts, paramètres et profils d'avant les comptes, en attente d'import | effacé après un import réussi |
 | PostgreSQL, tables `Post` et `Parametres` | posts du compte, ton par défaut, webhook du scraper | permanente ; supprimés avec le compte |
+| PostgreSQL, tables `Profil` et `RechercheProfils` | profils trouvés (une URL par compte), et chaque recherche : requête, lieu, pages, source, trouvés, rejetés | supprimés par l'utilisateur (« Vider ») ou avec le compte ; aucune purge automatique (`D-11`) |
 | PostgreSQL (conteneur `linkedai-postgres`, volume `linkedai-pgdata`), table `GeneratedPostLog` | chaque post généré, relié au compte qui l'a demandé (`userId` tiré de la session, jamais du corps ni de l'URL) ; les journaux d'avant les comptes n'ont pas de propriétaire et ne s'affichent pour personne | permanente ; supprimés avec le compte |
 | `~/n8n-data` | workflows et comptes n8n | permanente |
 

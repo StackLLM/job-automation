@@ -5,7 +5,13 @@ import { gardeTest } from './aides.js'
 
 const { axiosPost, axiosGet } = vi.hoisted(() => ({ axiosPost: vi.fn(), axiosGet: vi.fn() }))
 vi.mock('axios', () => ({ default: { post: axiosPost, get: axiosGet } }))
-vi.mock('../src/lib/prisma.js', () => ({ prisma: {} }))
+// Base simulée : la recherche enregistre ses profils (lot L1.1), testé sur une vraie base dans profilsCompte.test.js.
+vi.mock('../src/lib/prisma.js', () => ({
+  prisma: {
+    rechercheProfils: { create: vi.fn(async () => ({ id: 'recherche-1' })) },
+    profil: { createMany: vi.fn(async ({ data }) => ({ count: data.length })) },
+  },
+}))
 
 const { serper } = await import('../src/profils/fournisseurs/serper.js')
 const { brave } = await import('../src/profils/fournisseurs/brave.js')

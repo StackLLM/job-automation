@@ -103,7 +103,7 @@ describe('POST /api/compte/import-local', () => {
   it('importe les posts et les paramètres du navigateur', async () => {
     const A = await compte('Amina')
     const res = await A.post('/api/compte/import-local', { posts: POSTS_LOCAUX, settings: PARAMETRES_LOCAUX }).expect(200)
-    expect(res.body).toEqual({ posts: { importes: 2, dejaLa: 0, ecartes: 0 }, parametres: 'importes' })
+    expect(res.body).toEqual({ posts: { importes: 2, dejaLa: 0, ecartes: 0 }, parametres: 'importes', profils: { importes: 0, dejaLa: 0, ecartes: 0 } })
 
     const { posts, total } = (await A.get('/api/posts').expect(200)).body
     expect(total).toBe(2)
@@ -116,7 +116,7 @@ describe('POST /api/compte/import-local', () => {
     const A = await compte('Amina')
     await A.post('/api/compte/import-local', { posts: POSTS_LOCAUX, settings: PARAMETRES_LOCAUX }).expect(200)
     const deuxieme = await A.post('/api/compte/import-local', { posts: POSTS_LOCAUX, settings: PARAMETRES_LOCAUX }).expect(200)
-    expect(deuxieme.body).toEqual({ posts: { importes: 0, dejaLa: 2, ecartes: 0 }, parametres: 'conserves' })
+    expect(deuxieme.body).toMatchObject({ posts: { importes: 0, dejaLa: 2, ecartes: 0 }, parametres: 'conserves' })
     expect((await A.get('/api/posts')).body.total).toBe(2)
   })
 
@@ -142,7 +142,7 @@ describe('POST /api/compte/import-local', () => {
       posts: [...POSTS_LOCAUX, { id: 9, content: '' }, 'n’importe quoi'],
       settings: { scraperWebhook: 'pas une url' },
     }).expect(200)
-    expect(res.body).toEqual({ posts: { importes: 2, dejaLa: 0, ecartes: 2 }, parametres: 'conserves' })
+    expect(res.body).toMatchObject({ posts: { importes: 2, dejaLa: 0, ecartes: 2 }, parametres: 'conserves' })
   })
 
   it('refuse plus de 200 posts d’un coup (400)', async () => {

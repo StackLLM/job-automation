@@ -47,7 +47,8 @@ export function creerApp({ journal = true, garde, limiteConnexion = true } = {})
   // Comptes et sessions (Better Auth) : avant express.json, qui consommerait le corps des requêtes.
   app.all('/api/auth/*', toNodeHandler(auth))
 
-  app.use(express.json())
+  // 1 Mo : un import du navigateur porte jusqu'à 200 posts et 500 profils.
+  app.use(express.json({ limit: '1mb' }))
 
   // Public : santé du service.
   app.get('/api/health', (_, res) => res.json({ status: 'ok', version: VERSION }))

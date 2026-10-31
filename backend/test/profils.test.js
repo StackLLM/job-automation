@@ -5,7 +5,13 @@ import { gardeTest } from './aides.js'
 
 const { axiosPost } = vi.hoisted(() => ({ axiosPost: vi.fn() }))
 vi.mock('axios', () => ({ default: { post: axiosPost } }))
-vi.mock('../src/lib/prisma.js', () => ({ prisma: {} }))
+// Base simulée : la recherche enregistre ses profils (lot L1.1), testé sur une vraie base dans profilsCompte.test.js.
+vi.mock('../src/lib/prisma.js', () => ({
+  prisma: {
+    rechercheProfils: { create: vi.fn(async () => ({ id: 'recherche-1' })) },
+    profil: { createMany: vi.fn(async ({ data }) => ({ count: data.length })) },
+  },
+}))
 
 const { creerApp } = await import('../src/app.js')
 const { rechercherAvecSecours } = await import('../src/profils/fournisseurs/index.js')
@@ -46,7 +52,7 @@ describe('POST /api/profils/rechercher', () => {
   it('met des valeurs par défaut au lieu et au nombre de pages', async () => {
     axiosPost.mockResolvedValue(reponseN8n({ profiles: [] }))
     const res = await request(app).post('/api/profils/rechercher').send({ requete: 'devops' }).expect(200)
-    expect(res.body).toEqual({ profils: [], rejetes: 0, source: 'n8n', secours: false })
+    expect(res.body).toEqual({ profils: [], rejetes: 0, source: 'n8n', secours: false, nouveaux: 0, dejaLa: 0, rechercheId: 'recherche-1' })
     expect(axiosPost.mock.calls[0][1]).toEqual({ query: 'devops', location: '', maxPages: 1 })
   })
 

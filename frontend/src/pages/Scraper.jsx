@@ -1,4 +1,4 @@
-/** cloneme: P-03 — Scraper LinkedIn : recherche via le backend (profils normalisés), ou webhook n8n réglé à la main ; filtre, export CSV. */
+/** cloneme: P-03 — Scraper LinkedIn : recherche via le backend (profils normalisés), ou webhook n8n réglé à la main ; profils gardés sur le compte (lot L1.1) ; filtre, export CSV. */
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
@@ -7,7 +7,7 @@ import { ScanSearch, Download, Trash2, UsersRound, Settings, CircleCheck, Circle
 import useAppStore from '../store/useAppStore'
 import { avecActivite } from '../store/useActiviteStore'
 import { exporterProfilsCsv } from '../lib/exportCsv'
-import { rechercherProfils } from '../services/api'
+import { rechercherProfils, enregistrerLotProfils } from '../services/api'
 import Page from '../components/ui/Page'
 import { Card, CardHeader } from '../components/ui/Card'
 import { Field, Input, Select } from '../components/ui/Field'
@@ -21,6 +21,8 @@ const envScraperWebhook = import.meta.env.VITE_N8N_SCRAPER_WEBHOOK || ''
 // Nom affiché du fournisseur qui a répondu ; « secours » quand un fournisseur précédent a échoué.
 const SOURCES = { serper: 'Serper (Google)', brave: 'Brave', n8n: 'n8n (Google)' }
 const libelleSource = (source, secours) => `${SOURCES[source] || source}${secours ? ' (secours)' : ''}`
+// « (3 déjà dans ta liste) » quand une partie des profils était déjà sur le compte.
+const mentionDejaLa = (dejaLa) => (dejaLa ? ` (${dejaLa} déjà dans ta liste)` : '')
 
 // Par défaut, la recherche passe par le backend, qui choisit le fournisseur et normalise les profils.
 // Un webhook réglé dans Paramètres (ou VITE_N8N_SCRAPER_WEBHOOK) est appelé directement, comme avant.
@@ -57,7 +59,7 @@ const findProfiles = (data) => {
 
 export default function Scraper() {
   const navigate = useNavigate()
-  const { scrapedProfiles, addProfiles, clearProfiles, settings } = useAppStore()
+  const { scrapedProfiles, rechargerProfils, viderProfils, settings } = useAppStore()
   const webhookPerso = settings.scraperWebhook?.trim() || envScraperWebhook
   // Toujours vrai, comme avant le lot L1.2 : le backend sert de source par défaut. Le badge reste affiché ;
   // l'écran du scraper est repris aux lots L1.5 et L1.6.
@@ -79,12 +81,12 @@ export default function Scraper() {
   // Recherche par le backend : profils déjà normalisés, rejets comptés.
   const lancerParBackend = async () => {
     try {
-      const { profils, rejetes, source, secours } = await avecActivite(rechercherProfils({
+      const { profils, rejetes, source, secours, dejaLa } = await avecActivite(rechercherProfils({
         requete: form.query, lieu: form.location, pages: Number(form.maxPages),
       }))
       if (profils.length > 0) {
-        addProfiles(profils)
-        toast.success(`${profils.length} profils recuperes !${rejetes ? ` (${rejetes} ignorés : lien de profil invalide)` : ''} — source : ${libelleSource(source, secours)}`)
+        await rechargerProfils()
+        toast.success(`${profils.length} profils recuperes !${mentionDejaLa(dejaLa)}${rejetes ? ` (${rejetes} ignorés : lien de profil invalide)` : ''} — source : ${libelleSource(source, secours)}`)
       } else {
         toast(rejetes ? `Aucun profil exploitable : ${rejetes} résultats sans lien de profil valide.` : 'Aucun profil trouvé pour cette recherche.', { icon: '!' })
       }
@@ -126,8 +128,11 @@ export default function Scraper() {
       const profiles = findProfiles(res.data)
 
       if (profiles.length > 0) {
-        addProfiles(profiles)
-        toast.success(`${profiles.length} profils recuperes !`)
+        // Les profils du webhook passent aussi par le backend, qui les valide et les garde sur le compte.
+        const { nouveaux, dejaLa, rejetes } = await enregistrerLotProfils({ profils: profiles, requete: form.query, lieu: form.location })
+        await rechargerProfils()
+        if (nouveaux + dejaLa > 0) toast.success(`${nouveaux + dejaLa} profils recuperes !${mentionDejaLa(dejaLa)}`)
+        else toast(`Aucun profil exploitable : ${rejetes} résultats sans lien de profil valide.`, { icon: '!' })
       } else {
         toast("n8n a repondu, mais aucun profil exploitable n'a ete retourne.", { icon: '!' })
         console.log('Data brute:', res.data)
@@ -199,7 +204,7 @@ export default function Scraper() {
               <Button variante="secondaire" icone={Download} onClick={() => exporterProfilsCsv(scrapedProfiles)}>
                 Exporter CSV
               </Button>
-              <Button variante="fantome" icone={Trash2} onClick={() => { clearProfiles(); toast.success('Profils supprimes') }}>
+              <Button variante="fantome" icone={Trash2} onClick={() => viderProfils().then(() => toast.success('Profils supprimes'), (err) => toast.error(err.message))}>
                 Vider
               </Button>
             </>

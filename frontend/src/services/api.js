@@ -44,9 +44,10 @@ export const generateVisual = async ({ post, tech, type }) => {
   return res.data
 }
 
-// Profil normalisé par le backend → forme gardée dans le navigateur (name, title, link…),
-// celle que lisent la table, l'export CSV, la recherche globale et le dashboard.
+// Profil normalisé par le backend → forme lue par la table, l'export CSV, la recherche globale et le dashboard
+// (name, title, link…). id, createdAt et rechercheId existent pour un profil enregistré sur le compte (lot L1.1).
 export const versProfilLocal = (p) => ({
+  ...(p.id && { id: p.id, createdAt: p.createdAt, rechercheId: p.rechercheId }),
   name: p.nom,
   title: [p.poste, p.entreprise].filter(Boolean).join(' · ') || null,
   link: p.urlNormalisee,
@@ -58,8 +59,8 @@ export const versProfilLocal = (p) => ({
   source: p.source,
 })
 
-// Recherche de profils : le backend choisit le fournisseur (n8n aujourd'hui) et normalise les résultats.
-// Renvoie { profils (forme locale), rejetes, source }.
+// Recherche de profils : le backend choisit le fournisseur, normalise les résultats et les enregistre sur le compte.
+// Renvoie { profils (forme locale), rejetes, source, secours, nouveaux, dejaLa }.
 export async function rechercherProfils({ requete, lieu, pages }) {
   try {
     const res = await client.post('/profils/rechercher', { requete, lieu, pages }, { timeout: 130000 })
@@ -95,4 +96,29 @@ export async function enregistrerParametres(parametres) {
 // { posts, settings } du navigateur → { posts: { importes, dejaLa, ecartes }, parametres }
 export async function importerDonneesLocales(donnees) {
   try { return (await client.post('/compte/import-local', donnees)).data } catch (err) { throw lisible(err) }
+}
+
+// ─── Profils du compte (lot L1.1) ──────────────────────────────────────────
+export const PROFILS_PAR_PAGE = 200
+
+// Tous les profils du compte, page par page (plus récents d'abord), en forme locale.
+export async function listerTousLesProfils() {
+  try {
+    const profils = []
+    for (let page = 1; ; page++) {
+      const { data } = await client.get('/profils', { params: { page, parPage: PROFILS_PAR_PAGE } })
+      profils.push(...data.profils.map(versProfilLocal))
+      if (profils.length >= data.total || data.profils.length === 0) return profils
+    }
+  } catch (err) { throw lisible(err) }
+}
+
+// Profils reçus d'un webhook n8n réglé à la main → enregistrés sur le compte. Renvoie { nouveaux, dejaLa, rejetes }.
+export async function enregistrerLotProfils({ profils, requete, lieu }) {
+  try { return (await client.post('/profils/lot', { profils, requete, lieu })).data } catch (err) { throw lisible(err) }
+}
+
+// « Vider » : supprime tous les profils du compte. Renvoie { supprimes }.
+export async function supprimerTousLesProfils() {
+  try { return (await client.delete('/profils')).data } catch (err) { throw lisible(err) }
 }

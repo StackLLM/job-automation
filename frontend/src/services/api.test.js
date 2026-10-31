@@ -20,6 +20,12 @@ describe('versProfilLocal', () => {
     })
   })
 
+  it('garde l’identifiant, la date et la recherche d’un profil enregistré sur le compte (lot L1.1)', () => {
+    const enregistre = { ...normalise, id: 'p-1', createdAt: '2026-10-31T10:00:00.000Z', rechercheId: 'r-1' }
+    expect(versProfilLocal(enregistre)).toMatchObject({ id: 'p-1', createdAt: '2026-10-31T10:00:00.000Z', rechercheId: 'r-1', name: 'Amina Test' })
+    expect(versProfilLocal(normalise)).not.toHaveProperty('id')
+  })
+
   it('compose le titre avec ce qui existe, ou null', () => {
     expect(versProfilLocal({ ...normalise, entreprise: null }).title).toBe('Ingénieure Cloud')
     expect(versProfilLocal({ ...normalise, poste: null }).title).toBe('Exemple SA')

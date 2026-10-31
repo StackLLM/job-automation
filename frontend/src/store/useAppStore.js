@@ -1,13 +1,12 @@
 /**
  * Données de l'utilisateur.
- * - Posts et paramètres : sur le serveur, rattachés au compte (lot L0.7). Le store n'en garde qu'une copie,
- *   chargée à la connexion (chargerCompte) et vidée à la déconnexion (viderCompte).
- * - Profils scrapés, lettres, offres sauvegardées : encore dans le navigateur (localStorage,
- *   clé « linkedai-storage »), jusqu'aux lots L1.1 et L4.3.
+ * - Posts, paramètres (lot L0.7) et profils scrapés (lot L1.1) : sur le serveur, rattachés au compte.
+ *   Le store n'en garde qu'une copie, chargée à la connexion (chargerCompte) et vidée à la déconnexion (viderCompte).
+ * - Lettres et offres sauvegardées : encore dans le navigateur (localStorage, clé « linkedai-storage »).
  */
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { listerPosts, lireParametres, enregistrerParametres } from '../services/api'
+import { listerPosts, lireParametres, enregistrerParametres, listerTousLesProfils, supprimerTousLesProfils } from '../services/api'
 import { PARAMETRES_PAR_DEFAUT, extraireAImporter, mettreDeCote } from '../lib/importLocal'
 
 const POSTS_AFFICHES = 50
@@ -23,16 +22,16 @@ const useAppStore = create(
       chargerCompte: async (userId) => {
         set({ compte: 'chargement', compteDe: userId })
         try {
-          const [{ posts, total }, parametres] = await Promise.all([listerPosts(), lireParametres()])
+          const [{ posts, total }, parametres, profils] = await Promise.all([listerPosts(), lireParametres(), listerTousLesProfils()])
           if (get().compteDe !== userId) return // un autre compte a pris la place entre-temps
-          set({ posts, totalPosts: total, settings: { ...PARAMETRES_PAR_DEFAUT, ...parametres }, compte: 'pret' })
+          set({ posts, totalPosts: total, settings: { ...PARAMETRES_PAR_DEFAUT, ...parametres }, scrapedProfiles: profils, compte: 'pret' })
         } catch (err) {
           if (get().compteDe === userId) set({ compte: 'pret' })
           throw err
         }
       },
 
-      viderCompte: () => set({ posts: [], totalPosts: 0, settings: { ...PARAMETRES_PAR_DEFAUT }, compte: 'vide', compteDe: null }),
+      viderCompte: () => set({ posts: [], totalPosts: 0, settings: { ...PARAMETRES_PAR_DEFAUT }, scrapedProfiles: [], compte: 'vide', compteDe: null }),
 
       // ─── Posts générés (copie de ceux du compte) ──────
       posts: [],
@@ -44,14 +43,18 @@ const useAppStore = create(
           totalPosts: state.totalPosts + 1,
         })),
 
-      // ─── Profils scrapés ──────────────────────────────
+      // ─── Profils scrapés (copie de ceux du compte) ────
+      // Plus récents d'abord. Relue en entier après chaque recherche : le serveur écarte les doublons.
       scrapedProfiles: [],
-      setScrapedProfiles: (profiles) => set({ scrapedProfiles: profiles }),
-      addProfiles: (profiles) =>
-        set((state) => ({
-          scrapedProfiles: [...profiles, ...state.scrapedProfiles],
-        })),
-      clearProfiles: () => set({ scrapedProfiles: [] }),
+      rechargerProfils: async () => {
+        const userId = get().compteDe
+        const profils = await listerTousLesProfils()
+        if (get().compteDe === userId) set({ scrapedProfiles: profils })
+      },
+      viderProfils: async () => {
+        await supprimerTousLesProfils()
+        set({ scrapedProfiles: [] })
+      },
 
       // ─── Lettres générées ─────────────────────────────
       letters: [],
@@ -81,23 +84,22 @@ const useAppStore = create(
     }),
     {
       name: 'linkedai-storage',
-      // Version 1 (lot L0.7) : posts et paramètres quittent le navigateur. Ceux d'une version 0
-      // sont mis de côté pour être importés dans le compte, puis retirés de cette clé.
-      version: 1,
+      // Version 1 (lot L0.7) : posts et paramètres quittent le navigateur. Version 2 (lot L1.1) : les profils aussi.
+      // Ce qu'un ancien stockage contient encore est mis de côté pour être importé dans le compte,
+      // puis retiré de cette clé.
+      version: 2,
       migrate: (etat, version) => {
-        if (version < 1) {
-          mettreDeCote(extraireAImporter(etat))
-          const reste = { ...etat }
-          delete reste.posts
-          delete reste.settings
-          return reste
-        }
-        return etat
+        if (version >= 2) return etat
+        mettreDeCote(extraireAImporter(etat))
+        const reste = { ...etat }
+        delete reste.posts
+        delete reste.settings
+        delete reste.scrapedProfiles
+        return reste
       },
       partialize: (state) => ({
         letters: state.letters.slice(0, 20),
         savedJobs: state.savedJobs,
-        scrapedProfiles: state.scrapedProfiles.slice(0, 200),
       }),
     }
   )

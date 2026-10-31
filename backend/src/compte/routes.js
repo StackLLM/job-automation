@@ -2,18 +2,22 @@
  * Données du compte (lot L0.7) : paramètres, et reprise des données gardées dans le navigateur.
  * GET  /api/compte/parametres → { parametres }            (valeurs par défaut tant que rien n'est enregistré)
  * PUT  /api/compte/parametres { defaultTone?, scraperWebhook? } → { parametres }
- * POST /api/compte/import-local { posts?, settings? } → { posts: { importes, dejaLa }, parametres }
- * L'import est idempotent : un post déjà importé (même identifiant local) n'est pas recréé,
- * et des paramètres déjà enregistrés sur le compte ne sont jamais écrasés.
+ * POST /api/compte/import-local { posts?, settings?, profils? }
+ *      → { posts: { importes, dejaLa, ecartes }, parametres, profils: { importes, dejaLa, ecartes } }
+ * L'import est idempotent : un post déjà importé (même identifiant local) n'est pas recréé, un profil
+ * déjà sur le compte (même URL) non plus (lot L1.1), et des paramètres déjà enregistrés ne sont jamais écrasés.
  */
 import { Router } from 'express'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma.js'
+import { depuisFormeLocale } from '../profils/normaliser.js'
+import { enregistrerProfils } from '../profils/service.js'
 
 const router = Router()
 
 export const PARAMETRES_PAR_DEFAUT = { defaultTone: 'Professionnel', scraperWebhook: '' }
 export const MAX_POSTS_IMPORT = 200
+export const MAX_PROFILS_IMPORT = 500
 
 const SchemaParametres = z.object({
   defaultTone: z.string({ invalid_type_error: 'Le ton doit être un texte' }).trim().min(1, 'Le ton est obligatoire').max(40, 'Le ton est trop long (40 caractères maximum)'),
@@ -36,6 +40,7 @@ const SchemaPostLocal = z.object({
 const SchemaImport = z.object({
   posts: z.array(z.unknown()).max(MAX_POSTS_IMPORT, `${MAX_POSTS_IMPORT} posts au plus par import`).optional().default([]),
   settings: z.record(z.unknown()).nullish(),
+  profils: z.array(z.unknown()).max(MAX_PROFILS_IMPORT, `${MAX_PROFILS_IMPORT} profils au plus par import`).optional().default([]),
 })
 
 const lireParametres = async (userId) => {
@@ -90,6 +95,7 @@ router.post('/import-local', async (req, res) => {
   const userId = req.utilisateur.id
   const lignes = lu.data.posts.map((p) => versPostServeur(p, userId)).filter(Boolean)
   const ecartes = lu.data.posts.length - lignes.length
+  const profilsLus = lu.data.profils.map((p) => depuisFormeLocale(p, 'navigateur')).filter((r) => r.ok).map((r) => r.profil)
 
   // Des paramètres locaux invalides (ancienne valeur, webhook mal saisi) sont ignorés, pas bloquants.
   const parametresLocaux = lu.data.settings ? SchemaParametres.safeParse(lu.data.settings) : null
@@ -107,7 +113,13 @@ router.post('/import-local', async (req, res) => {
       if (cree.count) parametres = 'importes'
     }
 
-    return res.json({ posts: { importes: count, dejaLa: lignes.length - count, ecartes }, parametres })
+    const profils = await enregistrerProfils(userId, profilsLus)
+
+    return res.json({
+      posts: { importes: count, dejaLa: lignes.length - count, ecartes },
+      parametres,
+      profils: { importes: profils.nouveaux, dejaLa: profils.dejaLa, ecartes: lu.data.profils.length - profilsLus.length },
+    })
   } catch (err) {
     console.error('[Compte] Import local :', err.message)
     return res.status(500).json({ error: 'L’import des données du navigateur a échoué. Rien n’a été effacé.' })
