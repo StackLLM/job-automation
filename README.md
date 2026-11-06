@@ -231,7 +231,7 @@ Le plan d'origine (mai 2026) est gardé dans [docs/plan-initial.md](docs/plan-in
 | Dépôt | Visibilité |
 |---|---|
 | [oussamaalmouallim/job-automation-](https://github.com/oussamaalmouallim/job-automation-) | public |
-| [StackLLM/job-automation](https://github.com/StackLLM/job-automation) | privé |
+| [StackLLM/job-automation](https://github.com/StackLLM/job-automation) | public (décision D-14 du 06/11/2026 : tous les dépôts sont publics) |
 
 - **`dev`** reçoit chaque version, dans les deux dépôts. La CI (lint, tests, build, tests de bout en bout) tourne à chaque push.
 - **`main`** ne reçoit le travail qu'une fois tout validé, dans les deux dépôts en même temps. Un push sur `main` publie aussi le front sur GitHub Pages.

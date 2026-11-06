@@ -97,9 +97,9 @@ Les cibles sont des hypothèses, à valider par des entretiens :
 | Base de données | PostgreSQL |
 | Comptes | Better Auth (MIT) |
 | Profils de tiers | supprimés seulement par l'utilisateur ; risque juridique suivi (`R-11`) |
-| Skill CV | copiée dans le dépôt, une fois celui-ci privé |
+| Skill CV | copiée dans le dépôt ; tous les dépôts sont publics depuis le 06/11/2026 (`D-14`) |
 | Langue | français |
-| Dépôts | `oussamaalmouallim/job-automation-` (public) et `StackLLM/job-automation` (privé) |
+| Dépôts | `oussamaalmouallim/job-automation-` et `StackLLM/job-automation`, tous deux publics |
 | Branches | les versions vont sur `dev` ; `main` seulement après validation, dans les deux dépôts |
 | Hébergement, nom commercial, paiement | reportés avec la Phase 8 |
 
