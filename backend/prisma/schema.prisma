@@ -73,8 +73,9 @@ model RechercheProfils {
   @@index([userId, createdAt])
 }
 
-// Une URL de profil n'apparaît qu'une fois par compte. La fusion des informations
-// d'un profil déjà connu viendra avec le lot L1.3 ; d'ici là, la première version reste.
+// Une URL de profil n'apparaît qu'une fois par compte. Retrouvé par une nouvelle recherche, un profil
+// est mis à jour (lot L1.3, profils/fusion.js) ; createdAt reste la date du premier ajout, collecteLe
+// devient celle de la dernière collecte.
 model Profil {
   id            String            @id @default(cuid())
   userId        String
@@ -89,6 +90,10 @@ model Profil {
   extrait       String?
   image         String?
   source        String
+  // Données de l'utilisateur (lot L1.5) : jamais touchées par une nouvelle collecte.
+  note          String?
+  etiquettes    String[]          @default([])
+  collecteLe    DateTime          @default(now())
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
 

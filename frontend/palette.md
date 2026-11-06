@@ -63,7 +63,7 @@ la maquette, choix cohérent assumé).
 | Variable | Valeur | Origine | Usage |
 |---|---|---|---|
 | `--voile-blanc` | `rgba(255, 255, 255, 0.72)` | Déduit (barre de recherche posée sur le visuel) | recherche, éléments posés sur le hero |
-| `--voile-sombre` | `rgba(20, 26, 19, 0.35)` | Approximé | fond derrière un menu mobile |
+| `--voile-sombre` | `rgba(20, 26, 19, 0.35)` | Approximé | fond derrière un menu mobile ; voile de la fiche profil (C-34), classe `bg-voile` |
 | `--degrade-hero` | `radial-gradient(120% 95% at 72% 18%, #FFFFFF 0%, #F1ECE5 42%, #E4DACE 100%)` | Approximé (remplace la photo de satin, non réutilisable) | fond du bloc d'accueil |
 | `--degrade-carte` | `linear-gradient(135deg, #FBFAF7 0%, #EEE8E0 55%, #DCD2C5 100%)` | Approximé (d'après la carte bancaire crème) | carte visuelle LinkedAI |
 | `--degrade-puce` | `linear-gradient(135deg, #E9DFC9 0%, #CDBF9F 100%)` | Approximé | puce de la carte visuelle |

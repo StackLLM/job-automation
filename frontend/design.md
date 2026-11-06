@@ -20,7 +20,7 @@ donnée réelle de LinkedAI, ou n'est pas repris.
 |---|---|---|---|---|---|
 | P-01 | `/dashboard` | vue d'ensemble, données du store | C-01 | refait sur la maquette | Déduit |
 | P-02 | `/posts` | générateur de posts LinkedIn, ressources, visuel IA, historique | C-01 | refait, logique gardée | Approximé |
-| P-03 | `/scraper` | lancement du scraper n8n, table des profils, filtre, export CSV | C-01 | refait, logique gardée | Approximé |
+| P-03 | `/scraper` | lancement du scraper, liste des profils triée et filtrée, fiche profil (`?profil=<id>`), export CSV | C-01 | refait, logique gardée | Approximé |
 | P-04 | `/lettre` | lettre de motivation (Phase 2) | C-01 | page d'attente C-25 | Approximé |
 | P-05 | `/offres` | recherche d'offres (Phase 3) | C-01 | page d'attente C-25 | Approximé |
 | P-06 | `/settings` | compte et déconnexion, modèle et ton par défaut, webhook du scraper, à propos | C-01 | refait, logique gardée | Approximé |
@@ -79,7 +79,7 @@ donnée réelle de LinkedAI, ou n'est pas repris.
 | # | Section | Composants | Mise en page | Origine |
 |---|---|---|---|---|
 | 1 | Lancement (requête, localisation, pages) + état du webhook | C-06, C-08, C-09 | 3 champs en ligne ≥ 768 | Approximé |
-| 2 | Profils : filtre, export CSV, vider | C-06, C-24, C-10 | table qui défile en largeur | Approximé |
+| 2 | Profils : tri, filtres (texte, recherche, source, étiquette), export CSV, vider ; fiche C-34 | C-06, C-33, C-34, C-10 | liste de cartes sur une colonne ; fiche en plein écran | Approximé |
 
 ### P-04, P-05 — Pages d'attente
 - Bloc C-25 : icône, titre, phase prévue, ce que la page fera, retour au dashboard.
@@ -113,11 +113,13 @@ donnée réelle de LinkedAI, ou n'est pas repris.
 | C-21 | Générateur de visuel | appel n8n, aperçu iframe, export PNG | `src/components/posts/VisualCardGenerator.jsx` | Approximé |
 | C-22 | Compteur | Lightswind Count Up | `src/components/lightswind/CountUp.jsx` | Lightswind |
 | C-23 | Barre de progression | Lightswind Top Loader | `src/components/lightswind/TopLoader.jsx` | Lightswind |
-| C-24 | Table des profils | photo, nom, titre, extrait, lien | `src/components/scraper/TableProfils.jsx` | Approximé |
 | C-25 | Page d'attente | fonction prévue, phase, retour | `src/components/ui/PageAttente.jsx` | Approximé |
 | C-30 | Cadre des pages de compte | fond de l'app, logo, carte centrée (C-07), liens en pied | `src/components/auth/CadreAuth.jsx` | Déduit |
 | C-31 | Garde des routes | chargement de la session, puis des posts et paramètres du compte ; renvoi vers `/connexion` ou `/dashboard` | `src/components/auth/RouteProtegee.jsx` | Déduit |
 | C-32 | Import des données du navigateur | bandeau en haut du contenu : « Importer » ou « Plus tard » ; données effacées seulement après un import réussi (lot L0.7) | `src/components/compte/ImportNavigateur.jsx` | Déduit |
+| C-33 | Carte d'un profil | photo ou initiale, nom, poste · entreprise, lieu, source, date de collecte, étiquettes ; toute la carte ouvre la fiche (lot L1.5, remplace la table C-33) | `src/components/profils/CarteProfil.jsx` | Déduit |
+| C-34 | Fiche profil | panneau à droite sur voile `--voile-sombre`, plein écran sous 640 px ; informations, extrait, étiquettes, note, historique de collecte, suppression confirmée dans le panneau ; Échap ferme (lot L1.5) | `src/components/profils/FicheProfil.jsx` | Déduit |
+| C-35 | Confirmation de suppression | encadré `role="alertdialog"` : nombre de profils, « définitive », « Annuler » ou confirmer ; sert à la fiche, à la sélection et à « Vider » (lot L1.7) | `src/components/profils/ConfirmationSuppression.jsx` | Déduit |
 
 ## 6. Typographie appliquée
 
@@ -145,6 +147,9 @@ donnée réelle de LinkedAI, ou n'est pas repris.
 | Chargement IA / scraper | P-02, P-03, C-21 | bouton désactivé avec texte d'attente + barre C-23 | Approximé |
 | Vide | listes du dashboard, résultat de post, ressources, profils | C-10 avec action vers la bonne page | Approximé |
 | Erreur | appels OpenRouter / n8n | toast d'erreur (comportement existant) | Approximé |
+| Recherche de profils en cours | P-03 | bandeau `role="status"` sur `--couleur-surface-douce` : pages demandées, secondes écoulées, bouton « Annuler la recherche » ; squelettes à la forme de C-33 quand la liste est vide (lot L1.6) | Déduit |
+| Erreur de recherche | P-03 | toast d'erreur, une phrase claire par cas : réseau, délai, session, refus, trop de recherches, quota, clé, source lente ou indisponible, serveur (`src/lib/messagesRecherche.js`) ; une annulation donne un toast neutre (lot L1.6) | Déduit |
+| Confirmation de suppression | P-03, C-34 | C-35 : « Vider », sélection (cases à cocher sur C-33, « Tout sélectionner » limité aux profils affichés) et fiche (lots L1.6, L1.7) | Déduit |
 | Webhook non configuré | P-03 | pastille `attention` + bouton qui renvoie aux paramètres | Approximé |
 | 404 | P-99 | C-10 + retour au dashboard | Approximé |
 

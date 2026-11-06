@@ -5,7 +5,7 @@
  * où ProfilBrut = { titre, lien, extrait, image }. Une panne lève une ErreurFournisseur.
  */
 import axios from 'axios'
-import { ErreurFournisseur } from './erreurs.js'
+import { ErreurFournisseur, estUnDelai } from './erreurs.js'
 
 // Le workflow répond { profiles }, mais d'anciennes versions renvoyaient d'autres formes : on les accepte toutes.
 export function extraireListe(donnees) {
@@ -42,9 +42,11 @@ export const n8n = {
         validateStatus: () => true,
       })
     } catch (err) {
-      throw new ErreurFournisseur('n8n', 'injoignable', err.message)
+      throw new ErreurFournisseur('n8n', estUnDelai(err) ? 'delai' : 'injoignable', err.message)
     }
 
+    // 429 ou 402 : le quota Google Custom Search du workflow est épuisé (lot L1.6).
+    if (reponse.status === 429 || reponse.status === 402) throw new ErreurFournisseur('n8n', 'quota', `n8n a répondu ${reponse.status}`)
     if (reponse.status >= 400) throw new ErreurFournisseur('n8n', 'statut', `n8n a répondu ${reponse.status}`)
     const liste = extraireListe(reponse.data)
     if (!liste) throw new ErreurFournisseur('n8n', 'illisible', 'réponse de n8n illisible')

@@ -9,7 +9,8 @@ vi.mock('axios', () => ({ default: { post: axiosPost } }))
 vi.mock('../src/lib/prisma.js', () => ({
   prisma: {
     rechercheProfils: { create: vi.fn(async () => ({ id: 'recherche-1' })) },
-    profil: { createMany: vi.fn(async ({ data }) => ({ count: data.length })) },
+    profil: { findMany: vi.fn(async () => []), createMany: vi.fn(async ({ data }) => ({ count: data.length })) },
+    $transaction: vi.fn(async (operations) => Promise.all(operations)),
   },
 }))
 
@@ -52,7 +53,7 @@ describe('POST /api/profils/rechercher', () => {
   it('met des valeurs par défaut au lieu et au nombre de pages', async () => {
     axiosPost.mockResolvedValue(reponseN8n({ profiles: [] }))
     const res = await request(app).post('/api/profils/rechercher').send({ requete: 'devops' }).expect(200)
-    expect(res.body).toEqual({ profils: [], rejetes: 0, source: 'n8n', secours: false, nouveaux: 0, dejaLa: 0, rechercheId: 'recherche-1' })
+    expect(res.body).toEqual({ profils: [], rejetes: 0, source: 'n8n', secours: false, nouveaux: 0, misAJour: 0, inchanges: 0, rechercheId: 'recherche-1' })
     expect(axiosPost.mock.calls[0][1]).toEqual({ query: 'devops', location: '', maxPages: 1 })
   })
 

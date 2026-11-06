@@ -33,16 +33,29 @@ const depuisFormeLocale = (p, source) => ({
   entreprise: p.entreprise ?? null, lieu: p.lieu ?? null, extrait: p.snippet ?? null, image: p.image ?? null, source: p.source ?? source,
 })
 
-export async function simulerApi(page, remplacements = {}, { connecte = true, posts = [], parametres = {}, profils = [] } = {}) {
+export async function simulerApi(page, remplacements = {}, { connecte = true, posts = [], parametres = {}, profils = [], recherches = [] } = {}) {
   const appels = []
-  const serveur = { posts: [...posts], parametres: { defaultTone: 'Professionnel', scraperWebhook: '', ...parametres }, profils: [...profils] }
-  // Même règle que le backend : une URL n'est gardée qu'une fois ; les nouveaux passent devant, dans l'ordre reçu.
-  const enregistrerProfils = (lot) => {
-    const connues = new Set(serveur.profils.map((p) => p.urlNormalisee))
-    const nouveaux = lot.filter((p) => p.urlNormalisee && !connues.has(p.urlNormalisee))
-      .map((p, i) => ({ ...p, id: `pr-${serveur.profils.length + i + 1}`, createdAt: new Date().toISOString() }))
+  const serveur = {
+    posts: [...posts], parametres: { defaultTone: 'Professionnel', scraperWebhook: '', ...parametres },
+    profils: profils.map((p) => ({ note: null, etiquettes: [], ...p })), recherches: [...recherches],
+  }
+  // Mêmes règles que le backend : une URL n'est gardée qu'une fois ; les nouveaux passent devant, dans l'ordre reçu ;
+  // un profil déjà connu prend les valeurs nouvelles non vides (lot L1.3), sauf à l'import (mettreAJour: false).
+  const CHAMPS_FUSIONNES = ['nom', 'poste', 'entreprise', 'lieu', 'extrait', 'image']
+  const enregistrerProfils = (lot, { mettreAJour = true } = {}) => {
+    const parUrl = new Map(serveur.profils.map((p) => [p.urlNormalisee, p]))
+    const nouveaux = lot.filter((p) => p.urlNormalisee && !parUrl.has(p.urlNormalisee))
+      .map((p, i) => ({ ...p, id: `pr-${serveur.profils.length + i + 1}`, note: null, etiquettes: [], createdAt: new Date().toISOString(), collecteLe: new Date().toISOString() }))
+    let misAJour = 0
+    for (const p of mettreAJour ? lot : []) {
+      const existant = parUrl.get(p.urlNormalisee)
+      if (!existant) continue
+      const change = CHAMPS_FUSIONNES.filter((c) => p[c] != null && p[c] !== existant[c])
+      for (const c of change) existant[c] = p[c]
+      if (change.length) misAJour += 1
+    }
     serveur.profils.unshift(...nouveaux)
-    return { nouveaux: nouveaux.length, dejaLa: lot.length - nouveaux.length }
+    return { nouveaux: nouveaux.length, misAJour, inchanges: lot.length - nouveaux.length - misAJour }
   }
   const DONNEES = {
     'posts': () => ({ status: 200, json: { posts: serveur.posts.slice(0, 50), total: serveur.posts.length } }),
@@ -60,6 +73,27 @@ export async function simulerApi(page, remplacements = {}, { connecte = true, po
       return { status: 200, json: { profils: serveur.profils.slice(0, 200), total: serveur.profils.length, page: 1, parPage: 200 } }
     },
     'profils/rechercher': () => ({ status: 200, json: { profils: PROFILS_NORMALISES, rejetes: 0, source: 'n8n', secours: false, ...enregistrerProfils(PROFILS_NORMALISES) } }),
+    'profils/recherches': () => ({ status: 200, json: { recherches: serveur.recherches } }),
+    'profils/annuler-recherche': () => ({ status: 204, json: null }),
+    // Une sélection (lot L1.7) : les identifiants inconnus sont ignorés.
+    'profils/supprimer': (corps) => {
+      const ids = new Set(corps.ids)
+      const avant = serveur.profils.length
+      serveur.profils = serveur.profils.filter((p) => !ids.has(p.id))
+      return { status: 200, json: { supprimes: avant - serveur.profils.length } }
+    },
+    // PATCH et DELETE d'un profil (lot L1.5) : 404 s'il n'existe pas.
+    'profils/:id': (corps, methode, id) => {
+      const profil = serveur.profils.find((p) => p.id === id)
+      if (!profil) return { status: 404, json: { error: 'Profil introuvable' } }
+      if (methode === 'DELETE') {
+        serveur.profils = serveur.profils.filter((p) => p !== profil)
+        return { status: 204, json: null }
+      }
+      if ('note' in corps) profil.note = corps.note?.trim() || null
+      if ('etiquettes' in corps) profil.etiquettes = corps.etiquettes
+      return { status: 200, json: { profil } }
+    },
     'profils/lot': (corps) => {
       const valides = corps.profils.filter((p) => p.link)
       return { status: 200, json: { ...enregistrerProfils(valides.map((p) => depuisFormeLocale(p, 'webhook'))), rejetes: corps.profils.length - valides.length } }
@@ -74,11 +108,11 @@ export async function simulerApi(page, remplacements = {}, { connecte = true, po
       const nouveaux = (corps.posts || []).filter((p) => !deja.has(String(p.id)))
       serveur.posts.push(...nouveaux.map((p) => ({ ...p, id: `i-${p.id}`, idLocal: String(p.id) })))
       serveur.posts.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-      const profilsImportes = enregistrerProfils((corps.profils || []).map((p) => depuisFormeLocale(p, 'navigateur')))
+      const profilsImportes = enregistrerProfils((corps.profils || []).map((p) => depuisFormeLocale(p, 'navigateur')), { mettreAJour: false })
       return { status: 200, json: {
         posts: { importes: nouveaux.length, dejaLa: (corps.posts || []).length - nouveaux.length, ecartes: 0 },
         parametres: 'conserves',
-        profils: { importes: profilsImportes.nouveaux, dejaLa: profilsImportes.dejaLa, ecartes: 0 },
+        profils: { importes: profilsImportes.nouveaux, dejaLa: profilsImportes.inchanges, ecartes: 0 },
       } }
     },
   }
@@ -108,8 +142,11 @@ export async function simulerApi(page, remplacements = {}, { connecte = true, po
     const corps = requete.postDataJSON?.() ?? null
     appels.push({ chemin, methode: requete.method(), corps })
 
-    const reponse = (remplacements[chemin] || REPONSES[chemin] || DONNEES[chemin] || COMPTE[chemin])?.(corps, requete.method())
+    const idProfil = chemin.match(/^profils\/([^/]+)$/)?.[1]
+    const parId = idProfil && !DONNEES[chemin] ? DONNEES['profils/:id'] : null
+    const reponse = (remplacements[chemin] || REPONSES[chemin] || DONNEES[chemin] || parId || COMPTE[chemin])?.(corps ?? {}, requete.method(), idProfil)
     if (!reponse) return route.fulfill({ status: 599, body: `Appel non simulé : ${chemin}` })
+    if (reponse.status === 204) return route.fulfill({ status: 204 })
     return route.fulfill({ status: reponse.status, contentType: 'application/json', body: JSON.stringify(reponse.json) })
   })
 

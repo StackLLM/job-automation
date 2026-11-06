@@ -43,6 +43,11 @@ export const postsDuCompte = ({ maintenant = new Date() } = {}) => [
 export const profilsDuCompte = () =>
   PROFILS_NORMALISES.map((p, i) => ({ ...p, id: `pr-${i + 1}`, rechercheId: 'r-1', createdAt: new Date(Date.now() - i).toISOString() }))
 
+// Recherches du compte (GET /api/profils/recherches), celle d'où viennent les profils de profilsDuCompte.
+export const RECHERCHES = [
+  { id: 'r-1', requete: 'ingenieur cloud', lieu: 'maroc', pages: 1, source: 'n8n', trouves: 2, rejetes: 0, createdAt: '2026-10-31T09:00:00.000Z' },
+]
+
 // Contenu de « linkedai-storage » (zustand persist, version 2) : depuis le lot L1.1, le navigateur ne garde
 // plus que les lettres et les offres.
 export const etatNavigateur = () => ({

@@ -9,7 +9,8 @@ vi.mock('axios', () => ({ default: { post: axiosPost, get: axiosGet } }))
 vi.mock('../src/lib/prisma.js', () => ({
   prisma: {
     rechercheProfils: { create: vi.fn(async () => ({ id: 'recherche-1' })) },
-    profil: { createMany: vi.fn(async ({ data }) => ({ count: data.length })) },
+    profil: { findMany: vi.fn(async () => []), createMany: vi.fn(async ({ data }) => ({ count: data.length })) },
+    $transaction: vi.fn(async (operations) => Promise.all(operations)),
   },
 }))
 
@@ -162,7 +163,25 @@ describe('POST /api/profils/rechercher avec les fournisseurs payants', () => {
     vi.stubEnv('SERPER_API_KEY', 'cle-serper')
     axiosPost.mockRejectedValueOnce(erreurHttp(500)).mockRejectedValueOnce(new Error('ECONNREFUSED'))
     const res = await request(app).post('/api/profils/rechercher').send({ requete: 'devops' }).expect(502)
-    expect(res.body.error).toBe('La recherche de profils a échoué : aucun fournisseur n’a répondu.')
+    expect(res.body).toEqual({ error: 'La recherche de profils a échoué : aucun fournisseur n’a répondu.', cause: 'indisponible' })
+  })
+
+  // Lot L1.6 : la cause commune à tous les échecs est donnée au front, qui affiche un message adapté.
+  const delai = () => Object.assign(new Error('timeout of 120000ms exceeded'), { code: 'ECONNABORTED' })
+  it.each([
+    ['quota épuisé partout', () => { axiosPost.mockRejectedValueOnce(erreurHttp(402)); axiosGet.mockRejectedValueOnce(erreurHttp(429)); axiosPost.mockResolvedValueOnce({ status: 429, data: 'quota' }) }, 'quota'],
+    ['clés refusées, n8n hors délai', () => { axiosPost.mockRejectedValueOnce(erreurHttp(403)); axiosGet.mockRejectedValueOnce(erreurHttp(401)); axiosPost.mockRejectedValueOnce(delai()) }, 'indisponible'],
+  ])('%s : cause « %s »', async (_, preparer, cause) => {
+    vi.stubEnv('SERPER_API_KEY', 'a')
+    vi.stubEnv('BRAVE_API_KEY', 'b')
+    preparer()
+    expect((await request(app).post('/api/profils/rechercher').send({ requete: 'x' }).expect(502)).body.cause).toBe(cause)
+  })
+
+  it('n8n seul, hors délai : cause « delai »', async () => {
+    axiosPost.mockRejectedValueOnce(delai())
+    const res = await request(app).post('/api/profils/rechercher').send({ requete: 'x' }).expect(502)
+    expect(res.body).toEqual({ error: 'Le service de recherche a mis trop de temps à répondre.', cause: 'delai' })
   })
 
   it('les clés ne figurent jamais dans la réponse', async () => {

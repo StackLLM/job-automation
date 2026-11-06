@@ -77,7 +77,10 @@ Les cibles sont des hypothèses, à valider par des entretiens :
 | Remplacement de Google Custom Search (fin le 01/01/2027) : Serper, puis Brave, n8n en secours | 🛠 code prêt, clés à mettre | `L1.4` |
 | Coût IA par utilisateur | ⏸ mis de côté | `L0.6` |
 | Profils en base, rattachés au compte, avec leur recherche d'origine | ✅ en service | `L1.1` |
-| Mise à jour des profils déjà connus, fiche détaillée, suppression choisie | 🆕 | `L1.3`, `L1.5` à `L1.7` |
+| Profils sans doublon, mis à jour quand on les retrouve | ✅ en service | `L1.3` |
+| Fiche profil : note, étiquettes, tri et filtres | ✅ en service | `L1.5` |
+| Messages d'erreur clairs, recherche annulable, « Vider » confirmé | ✅ en service | `L1.6` |
+| Suppression choisie : un profil, une sélection ou tous, toujours confirmée | ✅ en service | `L1.7` |
 | Offres d'emploi | 🆕 | Phase 2 |
 | CV adapté à une offre (Skill ATS) | 🆕 | Phase 3 |
 | Lettres, posts versionnés | 🆕 | Phase 4 |

@@ -70,8 +70,9 @@ Scraper.jsx → services/api.js rechercherProfils()
           10 profils par page, 10 pages au plus ; arrêt à la première page vide
       → normalisation                                            (profils/normaliser.js)
       → enregistrement sur le compte : RechercheProfils + Profil  (profils/service.js)
-          une URL n'est gardée qu'une fois par compte (contrainte unique) ; un profil déjà connu n'est pas modifié
-  ← { profils: [{ urlNormalisee, nom, poste, entreprise, lieu, extrait, image, source }], rejetes, source, secours, nouveaux, dejaLa, rechercheId }
+          une URL n'est gardée qu'une fois par compte (contrainte unique) ;
+          un profil déjà connu est mis à jour (profils/fusion.js) : valeurs nouvelles non vides, source, date de collecte
+  ← { profils: [{ urlNormalisee, nom, poste, entreprise, lieu, extrait, image, source }], rejetes, source, secours, nouveaux, misAJour, inchanges, rechercheId }
   → rechargerProfils() : GET /api/profils, toutes les pages, puis versProfilLocal()   (forme lue : name, title, link, snippet…)
 ```
 
@@ -102,10 +103,14 @@ Toutes les routes ci-dessous, sauf `/api/health` et `/api/auth/*`, demandent une
 | PUT | `/api/compte/parametres` | `{ defaultTone?, scraperWebhook? }` | `{ parametres }` · 400 si le webhook n'est pas une URL http(s) |
 | POST | `/api/compte/import-local` | `{ posts?, settings? }` du navigateur (200 posts au plus) | `{ posts: { importes, dejaLa, ecartes }, parametres: 'importes' \| 'conserves' }` |
 | GET | `/api/posts/logs` | — (un `?userId=` est ignoré) | `{ success, logs }` : les 50 derniers journaux **du compte connecté** |
-| POST | `/api/profils/rechercher` | `{ requete, lieu?, pages? }` (1 à 10 pages) | `{ profils, rejetes, source, secours, nouveaux, dejaLa, rechercheId }` · 400 si paramètres invalides · 502 si aucun fournisseur ne répond · 500 si l'enregistrement échoue |
+| POST | `/api/profils/rechercher` | `{ requete, lieu?, pages?, idRecherche? }` (1 à 10 pages) | `{ profils, rejetes, source, secours, nouveaux, misAJour, inchanges, rechercheId }` · 400 si paramètres invalides · 409 si annulée · 502 `{ error, cause }` si aucun fournisseur ne répond (`quota`, `cle`, `delai`, `indisponible`) · 500 si l'enregistrement échoue |
 | GET | `/api/profils` | `?page=1&parPage=50` (200 au plus) | `{ profils, total, page, parPage }` : profils **du compte connecté**, plus récents d'abord |
-| POST | `/api/profils/lot` | `{ profils, requete?, lieu? }` (500 au plus) | `{ nouveaux, dejaLa, rejetes }` |
+| POST | `/api/profils/lot` | `{ profils, requete?, lieu? }` (500 au plus) | `{ nouveaux, misAJour, inchanges, rejetes }` |
+| POST | `/api/profils/annuler-recherche` | `{ idRecherche }` | 204 : la recherche portant cet identifiant n'enregistrera rien (elle répond 409) |
+| GET | `/api/profils/recherches` | — | `{ recherches }` : recherches du compte, plus récentes d'abord |
+| PATCH | `/api/profils/:id` | `{ note?, etiquettes? }` (note 2 000 caractères, 10 étiquettes de 30 caractères au plus) | `{ profil }` · 400 si invalide ou autre champ · 404 hors du compte |
 | DELETE | `/api/profils/:id` | — | 204 · 404 si le profil n'existe pas ou n'est pas au compte |
+| POST | `/api/profils/supprimer` | `{ ids }` (500 au plus) | `{ supprimes }` : seuls les profils du compte ; les autres identifiants sont ignorés |
 | DELETE | `/api/profils` | — | `{ supprimes }` : tous les profils du compte (« Vider ») |
 | POST | `/api/n8n/:nom` | relayé tel quel | réponse de n8n · 404 si `nom` n'est pas autorisé |
 
@@ -125,7 +130,7 @@ Webhooks autorisés : `resource-suggestions`, `generate-visual`, `scraper`.
 | Navigateur, `localStorage` « linkedai-storage » (version 2) | lettres (20), offres | jusqu'à effacement du navigateur |
 | Navigateur, `localStorage` « linkedai-a-importer » | posts, paramètres et profils d'avant les comptes, en attente d'import | effacé après un import réussi |
 | PostgreSQL, tables `Post` et `Parametres` | posts du compte, ton par défaut, webhook du scraper | permanente ; supprimés avec le compte |
-| PostgreSQL, tables `Profil` et `RechercheProfils` | profils trouvés (une URL par compte), et chaque recherche : requête, lieu, pages, source, trouvés, rejetés | supprimés par l'utilisateur (« Vider ») ou avec le compte ; aucune purge automatique (`D-11`) |
+| PostgreSQL, tables `Profil` et `RechercheProfils` | profils trouvés (une URL par compte, date d'ajout et date de dernière collecte, note et étiquettes de l'utilisateur), et chaque recherche : requête, lieu, pages, source, trouvés, rejetés | supprimés par l'utilisateur (« Vider ») ou avec le compte ; aucune purge automatique (`D-11`) |
 | PostgreSQL (conteneur `linkedai-postgres`, volume `linkedai-pgdata`), table `GeneratedPostLog` | chaque post généré, relié au compte qui l'a demandé (`userId` tiré de la session, jamais du corps ni de l'URL) ; les journaux d'avant les comptes n'ont pas de propriétaire et ne s'affichent pour personne | permanente ; supprimés avec le compte |
 | `~/n8n-data` | workflows et comptes n8n | permanente |
 

@@ -41,7 +41,10 @@ Navigateur (front React)
 
 - Le front ne contient **aucune clé**. Il n'appelle que le backend (`/api`).
 - n8n reste privé : seul le backend lui parle.
-- Les posts, les paramètres et les profils scrapés sont rattachés au compte, en base : on les retrouve après actualisation, déconnexion ou sur un autre navigateur. Une même URL de profil n'est gardée qu'une fois.
+- Les posts, les paramètres et les profils scrapés sont rattachés au compte, en base : on les retrouve après actualisation, déconnexion ou sur un autre navigateur. Une même URL de profil n'est gardée qu'une fois ; retrouvé par une nouvelle recherche, le profil est mis à jour, sans jamais perdre une information connue.
+- **Fiche profil** : liste triée (collecte, ajout, nom) et filtrée (texte, recherche d'origine, source, étiquette) ; chaque profil a sa fiche, avec note libre, étiquettes, historique de collecte, lien à copier et suppression confirmée. L'export CSV inclut la note et les étiquettes.
+- **Recherche** : une recherche longue s'annule (rien n'est alors enregistré) ; chaque erreur a son message clair (quota épuisé, source indisponible, réseau, délai…).
+- **Suppression** : un profil depuis sa fiche, une sélection cochée, ou tous ; toujours confirmée, jamais automatique.
 - **Reprise** : un navigateur utilisé avant les comptes propose, à la connexion, d'importer ses posts, ses paramètres et ses profils dans le compte. Rien n'est effacé avant la fin de l'import, et le relancer ne crée aucun doublon.
 
 Détails : [docs/architecture.md](docs/architecture.md).
@@ -141,7 +144,7 @@ cd backend && npx prisma studio      # parcourir la base dans le navigateur
 
 Les données vivent dans le volume Docker `linkedai-pgdata` : elles survivent à l'arrêt du conteneur. Les identifiants de `docker-compose.yml` servent seulement au développement.
 
-Les tests d'intégration utilisent le schéma `test` de cette même base, jamais `public` : `docker compose up -d db` doit tourner avant `npm test`.
+Les tests d'intégration utilisent le schéma `test` de cette même base, jamais `public` : `docker compose up -d db` doit tourner avant `npm test`. Les fichiers de test du backend tournent l'un après l'autre : en parallèle, leurs serveurs de test se croisaient sur les ports locaux et faisaient échouer un test au hasard.
 
 ## Démo en ligne
 
@@ -210,7 +213,7 @@ Le détail, avec les critères d'acceptation et les tests de chaque lot, est dan
 | Phase | Contenu | État |
 |---|---|---|
 | 0 — Socle | tests et CI, PostgreSQL, comptes, isolation des données, reprise des données du navigateur | ✅ close · `L0.6` (coût IA) mis de côté |
-| 1 — Scraping fiable | profils normalisés ✅, profils en base ✅, remplacement de Google (Serper, puis Brave) 🛠 clés à mettre, doublons, fiche détaillée | en cours |
+| 1 — Scraping fiable | profils normalisés ✅, profils en base ✅, doublons et mise à jour ✅, fiche détaillée ✅, messages d'erreur et annulation ✅, suppression choisie ✅, remplacement de Google (Serper, puis Brave) 🛠 clés à mettre | recettée ✅ ([docs/recette/phase-1.md](docs/recette/phase-1.md)) · reste `L1.4` : les clés |
 | 2 — Offres d'emploi | saisie, sources autorisées (France Travail, Adzuna, Remotive), filtres | à venir |
 | 3 — CV et Skill ATS | profil professionnel, CV ATS contrôlé, adapté à une offre, versions | à venir |
 | 4 — Lettres et posts | lettres adaptées, posts et visuels enregistrés et versionnés | à venir |

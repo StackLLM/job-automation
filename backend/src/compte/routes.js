@@ -113,12 +113,12 @@ router.post('/import-local', async (req, res) => {
       if (cree.count) parametres = 'importes'
     }
 
-    const profils = await enregistrerProfils(userId, profilsLus)
+    const profils = await enregistrerProfils(userId, profilsLus, { mettreAJour: false })
 
     return res.json({
       posts: { importes: count, dejaLa: lignes.length - count, ecartes },
       parametres,
-      profils: { importes: profils.nouveaux, dejaLa: profils.dejaLa, ecartes: lu.data.profils.length - profilsLus.length },
+      profils: { importes: profils.nouveaux, dejaLa: profils.inchanges, ecartes: lu.data.profils.length - profilsLus.length },
     })
   } catch (err) {
     console.error('[Compte] Import local :', err.message)

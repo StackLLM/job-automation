@@ -29,6 +29,7 @@ export default {
         'danger-pale':    'var(--couleur-danger-pale)',
         attention:        'var(--couleur-attention)',
         'attention-pale': 'var(--couleur-attention-pale)',
+        voile:            'var(--voile-sombre)',
       },
       fontFamily: {
         sans: 'var(--police-texte)',

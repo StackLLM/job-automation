@@ -6,7 +6,7 @@
  */
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { listerPosts, lireParametres, enregistrerParametres, listerTousLesProfils, supprimerTousLesProfils } from '../services/api'
+import { listerPosts, lireParametres, enregistrerParametres, listerTousLesProfils, supprimerTousLesProfils, listerRecherches, modifierProfil, supprimerProfil, supprimerSelection } from '../services/api'
 import { PARAMETRES_PAR_DEFAUT, extraireAImporter, mettreDeCote } from '../lib/importLocal'
 
 const POSTS_AFFICHES = 50
@@ -22,16 +22,16 @@ const useAppStore = create(
       chargerCompte: async (userId) => {
         set({ compte: 'chargement', compteDe: userId })
         try {
-          const [{ posts, total }, parametres, profils] = await Promise.all([listerPosts(), lireParametres(), listerTousLesProfils()])
+          const [{ posts, total }, parametres, profils, recherches] = await Promise.all([listerPosts(), lireParametres(), listerTousLesProfils(), listerRecherches()])
           if (get().compteDe !== userId) return // un autre compte a pris la place entre-temps
-          set({ posts, totalPosts: total, settings: { ...PARAMETRES_PAR_DEFAUT, ...parametres }, scrapedProfiles: profils, compte: 'pret' })
+          set({ posts, totalPosts: total, settings: { ...PARAMETRES_PAR_DEFAUT, ...parametres }, scrapedProfiles: profils, recherches, compte: 'pret' })
         } catch (err) {
           if (get().compteDe === userId) set({ compte: 'pret' })
           throw err
         }
       },
 
-      viderCompte: () => set({ posts: [], totalPosts: 0, settings: { ...PARAMETRES_PAR_DEFAUT }, scrapedProfiles: [], compte: 'vide', compteDe: null }),
+      viderCompte: () => set({ posts: [], totalPosts: 0, settings: { ...PARAMETRES_PAR_DEFAUT }, scrapedProfiles: [], recherches: [], compte: 'vide', compteDe: null }),
 
       // ─── Posts générés (copie de ceux du compte) ──────
       posts: [],
@@ -46,10 +46,29 @@ const useAppStore = create(
       // ─── Profils scrapés (copie de ceux du compte) ────
       // Plus récents d'abord. Relue en entier après chaque recherche : le serveur écarte les doublons.
       scrapedProfiles: [],
+      // Recherches du compte (lot L1.5) : filtre « recherche d'origine » et historique de la fiche.
+      recherches: [],
       rechargerProfils: async () => {
         const userId = get().compteDe
-        const profils = await listerTousLesProfils()
-        if (get().compteDe === userId) set({ scrapedProfiles: profils })
+        const [profils, recherches] = await Promise.all([listerTousLesProfils(), listerRecherches()])
+        if (get().compteDe === userId) set({ scrapedProfiles: profils, recherches })
+      },
+      // Note et étiquettes d'un profil (fiche, lot L1.5) : le serveur fait foi, sa réponse remplace la copie.
+      modifierProfil: async (id, partiel) => {
+        const profil = await modifierProfil(id, partiel)
+        set((state) => ({ scrapedProfiles: state.scrapedProfiles.map((p) => (p.id === id ? profil : p)) }))
+        return profil
+      },
+      supprimerProfil: async (id) => {
+        await supprimerProfil(id)
+        set((state) => ({ scrapedProfiles: state.scrapedProfiles.filter((p) => p.id !== id) }))
+      },
+      // Une sélection (lot L1.7) : renvoie le nombre supprimé par le serveur.
+      supprimerProfils: async (ids) => {
+        const { supprimes } = await supprimerSelection(ids)
+        const retires = new Set(ids)
+        set((state) => ({ scrapedProfiles: state.scrapedProfiles.filter((p) => !retires.has(p.id)) }))
+        return supprimes
       },
       viderProfils: async () => {
         await supprimerTousLesProfils()

@@ -7,7 +7,7 @@
 import { serper } from './serper.js'
 import { brave } from './brave.js'
 import { n8n } from './n8n.js'
-import { ErreurFournisseur } from './erreurs.js'
+import { ErreurFournisseur, causeCommune } from './erreurs.js'
 
 export const TOUS = [serper, brave, n8n]
 
@@ -28,5 +28,6 @@ export async function rechercherAvecSecours(parametres, fournisseurs = fournisse
   }
   const erreur = new ErreurFournisseur('tous', 'indisponible', 'aucun fournisseur de profils n’a répondu')
   erreur.echecs = echecs
+  erreur.causeEchec = causeCommune(echecs)
   throw erreur
 }

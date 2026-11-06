@@ -1,28 +1,31 @@
-/** cloneme: P-03 — Scraper LinkedIn : recherche via le backend (profils normalisés), ou webhook n8n réglé à la main ; profils gardés sur le compte (lot L1.1) ; filtre, export CSV. */
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+/** cloneme: P-03 — Scraper LinkedIn : recherche via le backend (profils normalisés), ou webhook n8n réglé à la main ; profils gardés sur le compte (lot L1.1) ; liste triée et filtrée, fiche profil (lot L1.5), sélection à supprimer (lot L1.7), export CSV. */
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import axios from 'axios'
-import { ScanSearch, Download, Trash2, UsersRound, Settings, CircleCheck, CircleAlert, Search } from 'lucide-react'
+import { ScanSearch, Download, Trash2, UsersRound, Settings, CircleCheck, CircleAlert, Search, X } from 'lucide-react'
 import useAppStore from '../store/useAppStore'
 import { avecActivite } from '../store/useActiviteStore'
 import { exporterProfilsCsv } from '../lib/exportCsv'
-import { rechercherProfils, enregistrerLotProfils } from '../services/api'
+import { rechercherProfils, enregistrerLotProfils, annulerRecherche } from '../services/api'
+import { bilanRecherche, profilsGardes } from '../lib/bilanRecherche'
+import { messageErreurRecherche, messageErreurWebhook, pagesDemandees } from '../lib/messagesRecherche'
 import Page from '../components/ui/Page'
 import { Card, CardHeader } from '../components/ui/Card'
 import { Field, Input, Select } from '../components/ui/Field'
 import Button from '../components/ui/Button'
 import Badge from '../components/ui/Badge'
 import EmptyState from '../components/ui/EmptyState'
-import TableProfils from '../components/scraper/TableProfils'
+import CarteProfil from '../components/profils/CarteProfil'
+import FicheProfil from '../components/profils/FicheProfil'
+import ConfirmationSuppression from '../components/profils/ConfirmationSuppression'
+import { TRIS, trierProfils, filtrerProfils, etiquettesDe, sourcesDe, libelleSource as libelleSourceProfil, libelleRecherche } from '../lib/profils'
 
 const envScraperWebhook = import.meta.env.VITE_N8N_SCRAPER_WEBHOOK || ''
 
 // Nom affiché du fournisseur qui a répondu ; « secours » quand un fournisseur précédent a échoué.
 const SOURCES = { serper: 'Serper (Google)', brave: 'Brave', n8n: 'n8n (Google)' }
 const libelleSource = (source, secours) => `${SOURCES[source] || source}${secours ? ' (secours)' : ''}`
-// « (3 déjà dans ta liste) » quand une partie des profils était déjà sur le compte.
-const mentionDejaLa = (dejaLa) => (dejaLa ? ` (${dejaLa} déjà dans ta liste)` : '')
 
 // Par défaut, la recherche passe par le backend, qui choisit le fournisseur et normalise les profils.
 // Un webhook réglé dans Paramètres (ou VITE_N8N_SCRAPER_WEBHOOK) est appelé directement, comme avant.
@@ -59,10 +62,9 @@ const findProfiles = (data) => {
 
 export default function Scraper() {
   const navigate = useNavigate()
-  const { scrapedProfiles, rechargerProfils, viderProfils, settings } = useAppStore()
+  const { scrapedProfiles, recherches, rechargerProfils, viderProfils, supprimerProfils, settings } = useAppStore()
   const webhookPerso = settings.scraperWebhook?.trim() || envScraperWebhook
-  // Toujours vrai, comme avant le lot L1.2 : le backend sert de source par défaut. Le badge reste affiché ;
-  // l'écran du scraper est repris aux lots L1.5 et L1.6.
+  // Toujours vrai, comme avant le lot L1.2 : le backend sert de source par défaut. Le badge reste affiché.
   const hasScraperWebhook = true
 
   const [form, setForm] = useState({
@@ -72,93 +74,150 @@ export default function Scraper() {
   })
   const [loading, setLoading] = useState(false)
   const [filter, setFilter] = useState('')
+  // Tri et filtres de la liste (lot L1.5).
+  const [tri, setTri] = useState('collecte')
+  const [filtres, setFiltres] = useState({ rechercheId: '', source: '', etiquette: '' })
+  const changerFiltre = (e) => setFiltres((f) => ({ ...f, [e.target.name]: e.target.value }))
+
+  // Fiche ouverte : dans l'adresse (?profil=<id>), pour la retrouver après actualisation.
+  const [parametres, setParametres] = useSearchParams()
+  const profilOuvert = scrapedProfiles.find((p) => p.id && p.id === parametres.get('profil'))
+  const ouvrirFiche = (p) => setParametres((prev) => { const n = new URLSearchParams(prev); n.set('profil', p.id); return n })
+  const fermerFiche = useCallback(() => setParametres((prev) => { const n = new URLSearchParams(prev); n.delete('profil'); return n }), [setParametres])
 
   const handleChange = (e) => {
     const { name, value } = e.target
     setForm((f) => ({ ...f, [name]: value }))
   }
 
-  // Recherche par le backend : profils déjà normalisés, rejets comptés.
-  const lancerParBackend = async () => {
+  // Lot L1.6 : la recherche en cours peut être annulée ; l'écran d'attente montre le temps écoulé.
+  const controleur = useRef(null)
+  const idRecherche = useRef(null)
+  const [debut, setDebut] = useState(null)
+  const [secondes, setSecondes] = useState(0)
+  useEffect(() => {
+    if (!debut) return undefined
+    const minuteur = setInterval(() => setSecondes(Math.floor((Date.now() - debut) / 1000)), 1000)
+    return () => clearInterval(minuteur)
+  }, [debut])
+  const annuler = () => {
+    // Le backend est prévenu en plus : derrière un proxy, il ne voit pas toujours la connexion se couper.
+    if (idRecherche.current) annulerRecherche(idRecherche.current).catch(() => {})
+    controleur.current?.abort()
+  }
+
+  // Une erreur → un message clair ; une annulation n'est pas une erreur.
+  const signaler = ({ message, annulee }) => (annulee ? toast(message, { icon: 'ℹ' }) : toast.error(message))
+
+  const signalerResultat = (bilan, { source, secours } = {}) => {
+    if (profilsGardes(bilan) > 0) {
+      // Lot L1.3 : « 3 nouveaux, 2 mis à jour, 5 déjà à jour, 1 rejeté ».
+      toast.success(`Recherche terminée : ${bilanRecherche(bilan)}${source ? ` — source : ${libelleSource(source, secours)}` : ''}`)
+    } else if (bilan.rejetes) {
+      toast(`Aucun profil exploitable : ${bilan.rejetes} résultats sans lien de profil valide.`, { icon: '!' })
+    } else {
+      toast('Aucun profil trouvé pour cette recherche.', { icon: '!' })
+    }
+  }
+
+  // Recherche par le backend : profils normalisés, rejets comptés, enregistrés sur le compte.
+  const lancerParBackend = async (signal) => {
     try {
-      const { profils, rejetes, source, secours, dejaLa } = await avecActivite(rechercherProfils({
-        requete: form.query, lieu: form.location, pages: Number(form.maxPages),
-      }))
-      if (profils.length > 0) {
-        await rechargerProfils()
-        toast.success(`${profils.length} profils recuperes !${mentionDejaLa(dejaLa)}${rejetes ? ` (${rejetes} ignorés : lien de profil invalide)` : ''} — source : ${libelleSource(source, secours)}`)
-      } else {
-        toast(rejetes ? `Aucun profil exploitable : ${rejetes} résultats sans lien de profil valide.` : 'Aucun profil trouvé pour cette recherche.', { icon: '!' })
-      }
+      const resultat = await avecActivite(rechercherProfils({
+        requete: form.query, lieu: form.location, pages: Number(form.maxPages), idRecherche: idRecherche.current,
+      }, { signal }))
+      if (resultat.profils.length > 0) await rechargerProfils()
+      signalerResultat(resultat, resultat)
     } catch (err) {
-      toast.error(err.message)
+      signaler(messageErreurRecherche(err))
+    }
+  }
+
+  // Webhook réglé à la main : appel direct et lecture souple de la réponse, puis enregistrement par le backend.
+  const lancerParWebhook = async (signal) => {
+    let reponse
+    try {
+      const prompt = `scrape linkedin ${form.query} ${form.location} maxPages:${form.maxPages}`
+      reponse = await avecActivite(axios.post(
+        webhookPerso,
+        { query: form.query, location: form.location, maxPages: Number(form.maxPages), message: prompt, chatInput: prompt },
+        { responseType: 'text', transformResponse: [(data) => data], timeout: 120000, signal }
+      ))
+    } catch (err) {
+      signaler(messageErreurWebhook(err))
+      return
+    }
+
+    const profiles = findProfiles(reponse.data)
+    if (profiles.length === 0) {
+      toast('Ton webhook n8n a répondu, mais sans aucun profil exploitable.', { icon: '!' })
+      return
+    }
+    try {
+      const bilan = await enregistrerLotProfils({ profils: profiles, requete: form.query, lieu: form.location })
+      await rechargerProfils()
+      signalerResultat(bilan)
+    } catch (err) {
+      signaler(messageErreurRecherche(err))
     }
   }
 
   const handleLaunch = async () => {
+    controleur.current = new AbortController()
+    idRecherche.current = crypto.randomUUID()
     setLoading(true)
-    if (!webhookPerso) {
-      await lancerParBackend()
-      setLoading(false)
-      return
-    }
-
-    // Webhook réglé à la main : appel direct et lecture souple de la réponse, comme avant le lot L1.2.
-    const scraperWebhook = webhookPerso
+    setSecondes(0)
+    setDebut(Date.now())
     try {
-      const prompt = `scrape linkedin ${form.query} ${form.location} maxPages:${form.maxPages}`
-      const res = await avecActivite(axios.post(
-        scraperWebhook,
-        {
-          query: form.query,
-          location: form.location,
-          maxPages: Number(form.maxPages),
-          message: prompt,
-          chatInput: prompt,
-        },
-        {
-          responseType: 'text',
-          transformResponse: [(data) => data],
-          timeout: 120000,
-        }
-      ))
-
-      console.log('Reponse n8n:', res.data)
-
-      const profiles = findProfiles(res.data)
-
-      if (profiles.length > 0) {
-        // Les profils du webhook passent aussi par le backend, qui les valide et les garde sur le compte.
-        const { nouveaux, dejaLa, rejetes } = await enregistrerLotProfils({ profils: profiles, requete: form.query, lieu: form.location })
-        await rechargerProfils()
-        if (nouveaux + dejaLa > 0) toast.success(`${nouveaux + dejaLa} profils recuperes !${mentionDejaLa(dejaLa)}`)
-        else toast(`Aucun profil exploitable : ${rejetes} résultats sans lien de profil valide.`, { icon: '!' })
-      } else {
-        toast("n8n a repondu, mais aucun profil exploitable n'a ete retourne.", { icon: '!' })
-        console.log('Data brute:', res.data)
-      }
-    } catch (err) {
-      console.error('Erreur:', err)
-      if (err.response?.status) {
-        toast.error(`Erreur n8n ${err.response.status}: verifie l'URL du webhook.`)
-      } else if (err.message.includes('Network Error')) {
-        toast.error('Erreur reseau/CORS: le webhook n8n doit autoriser cette app.')
-      } else {
-        toast.error(`Erreur: ${err.message}`)
-      }
+      await (webhookPerso ? lancerParWebhook : lancerParBackend)(controleur.current.signal)
     } finally {
+      controleur.current = null
+      idRecherche.current = null
+      setDebut(null)
       setLoading(false)
     }
   }
 
-  const filtered = scrapedProfiles.filter((p) => {
-    const q = filter.toLowerCase()
-    return (
-      p.name?.toLowerCase().includes(q) ||
-      p.title?.toLowerCase().includes(q) ||
-      p.snippet?.toLowerCase().includes(q)
-    )
-  })
+  // « Vider » demande une confirmation (lot L1.6) : la suppression est définitive.
+  // Suppressions (lots L1.6 et L1.7) : toujours confirmées (C-35), jamais automatiques (D-11).
+  const [confirmation, setConfirmation] = useState(null) // null, « tout » ou « selection »
+  const [suppressionEnCours, setSuppressionEnCours] = useState(false)
+  const annoncerSuppression = (n) => toast.success(`${n} profil${n > 1 ? 's' : ''} supprimé${n > 1 ? 's' : ''}.`)
+  const supprimer = async (action) => {
+    setSuppressionEnCours(true)
+    try {
+      annoncerSuppression(await action())
+      setSelection(new Set())
+    } catch (err) {
+      signaler(messageErreurRecherche(err))
+    } finally {
+      setSuppressionEnCours(false)
+      setConfirmation(null)
+    }
+  }
+  const vider = () => supprimer(async () => { const n = scrapedProfiles.length; await viderProfils(); return n })
+
+  // Sélection : seulement des profils encore dans la liste.
+  const [selection, setSelection] = useState(() => new Set())
+  const choisir = useCallback((p, coche) => setSelection((avant) => {
+    const apres = new Set(avant)
+    if (coche) apres.add(p.id); else apres.delete(p.id)
+    return apres
+  }), [])
+  const supprimerSelection = () => supprimer(() => supprimerProfils(selectionVisible))
+
+  const filtered = useMemo(
+    () => trierProfils(filtrerProfils(scrapedProfiles, { texte: filter, ...filtres }), tri),
+    [scrapedProfiles, filter, filtres, tri]
+  )
+  const etiquettes = useMemo(() => etiquettesDe(scrapedProfiles), [scrapedProfiles])
+  const sources = useMemo(() => sourcesDe(scrapedProfiles), [scrapedProfiles])
+  // Sélection limitée aux profils affichés : un filtre qui en cache ne les supprime pas en douce.
+  const selectionVisible = useMemo(() => filtered.filter((p) => selection.has(p.id)).map((p) => p.id), [filtered, selection])
+  const tousVisiblesChoisis = filtered.length > 0 && selectionVisible.length === filtered.length
+  const choisirVisibles = (coche) => setSelection(coche ? new Set(filtered.map((p) => p.id).filter(Boolean)) : new Set())
+  const filtreActif = Boolean(filter || filtres.rechercheId || filtres.source || filtres.etiquette)
+  const effacerFiltres = () => { setFilter(''); setFiltres({ rechercheId: '', source: '', etiquette: '' }) }
 
   return (
     <Page
@@ -194,7 +253,7 @@ export default function Scraper() {
 
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           <Button icone={ScanSearch} chargement={loading} onClick={handleLaunch}>
-            {loading ? 'Scraping en cours…' : 'Lancer le scraper'}
+            {loading ? 'Recherche en cours…' : 'Lancer le scraper'}
           </Button>
           {!hasScraperWebhook && (
             <Button variante="secondaire" icone={Settings} onClick={() => navigate('/settings')}>Configurer le webhook</Button>
@@ -204,12 +263,28 @@ export default function Scraper() {
               <Button variante="secondaire" icone={Download} onClick={() => exporterProfilsCsv(scrapedProfiles)}>
                 Exporter CSV
               </Button>
-              <Button variante="fantome" icone={Trash2} onClick={() => viderProfils().then(() => toast.success('Profils supprimes'), (err) => toast.error(err.message))}>
+              <Button variante="fantome" icone={Trash2} onClick={() => setConfirmation('tout')} disabled={confirmation === 'tout'}>
                 Vider
               </Button>
             </>
           )}
         </div>
+
+        {/* Attente (lot L1.6) : n8n reçoit toutes les pages en un appel, l'avancement page par page n'est pas connu. */}
+        {loading && (
+          <div role="status" className="flex flex-col gap-3 rounded-controle bg-surface-douce p-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-texte">
+              Recherche en cours — {pagesDemandees(form.maxPages)} · <span className="tabular-nums">{secondes} s</span>
+              <span className="block text-xs text-texte-pale">Une page prend en général quelques secondes ; au-delà de deux minutes, la recherche s’arrête.</span>
+            </p>
+            <Button variante="secondaire" icone={X} onClick={annuler}>Annuler la recherche</Button>
+          </div>
+        )}
+
+        {confirmation === 'tout' && (
+          <ConfirmationSuppression nombre={scrapedProfiles.length} libelleConfirmer="Tout supprimer" enCours={suppressionEnCours}
+            onConfirmer={vider} onAnnuler={() => setConfirmation(null)} />
+        )}
       </Card>
 
       <Card>
@@ -218,7 +293,7 @@ export default function Scraper() {
             <CardHeader
               titre={`Profils (${scrapedProfiles.length})`}
               action={
-                <div className="flex h-9 w-full max-w-[220px] items-center gap-2 rounded-pilule border border-ligne bg-surface px-3 focus-within:border-accent focus-within:shadow-focus">
+                <div className="flex h-9 w-full max-w-[150px] items-center sm:max-w-[220px] gap-2 rounded-pilule border border-ligne bg-surface px-3 focus-within:border-accent focus-within:shadow-focus">
                   <Search size={14} className="shrink-0 text-texte-pale" />
                   <input
                     className="min-w-0 flex-1 bg-transparent text-xs text-texte placeholder:text-texte-pale focus:outline-none"
@@ -230,11 +305,66 @@ export default function Scraper() {
                 </div>
               }
             />
+            <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <Field label="Trier par" htmlFor="tri">
+                <Select id="tri" value={tri} onChange={(e) => setTri(e.target.value)}>
+                  {TRIS.map((t) => <option key={t.id} value={t.id}>{t.libelle}</option>)}
+                </Select>
+              </Field>
+              <Field label="Recherche" htmlFor="rechercheId">
+                <Select id="rechercheId" name="rechercheId" value={filtres.rechercheId} onChange={changerFiltre}>
+                  <option value="">Toutes</option>
+                  {recherches.map((r) => <option key={r.id} value={r.id}>{libelleRecherche(r)}</option>)}
+                </Select>
+              </Field>
+              <Field label="Source" htmlFor="source">
+                <Select id="source" name="source" value={filtres.source} onChange={changerFiltre}>
+                  <option value="">Toutes</option>
+                  {sources.map((s) => <option key={s} value={s}>{libelleSourceProfil(s)}</option>)}
+                </Select>
+              </Field>
+              <Field label="Étiquette" htmlFor="etiquette">
+                <Select id="etiquette" name="etiquette" value={filtres.etiquette} onChange={changerFiltre}>
+                  <option value="">Toutes</option>
+                  {etiquettes.map((e) => <option key={e} value={e}>{e}</option>)}
+                </Select>
+              </Field>
+            </div>
+            {filtered.length > 0 && (
+              <div className="mb-2 flex flex-col gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label className="inline-flex cursor-pointer items-center gap-2 text-xs text-texte-doux">
+                    <input type="checkbox" className="h-4 w-4 accent-primaire"
+                      checked={tousVisiblesChoisis} onChange={(e) => choisirVisibles(e.target.checked)} />
+                    Tout sélectionner ({filtered.length})
+                  </label>
+                  {selectionVisible.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-texte-doux" aria-live="polite">{selectionVisible.length} sélectionné{selectionVisible.length > 1 ? 's' : ''}</span>
+                      <Button petit variante="fantome" onClick={() => setSelection(new Set())}>Désélectionner</Button>
+                      <Button petit variante="secondaire" icone={Trash2} onClick={() => setConfirmation('selection')} disabled={confirmation === 'selection'}>
+                        Supprimer la sélection
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                {confirmation === 'selection' && selectionVisible.length > 0 && (
+                  <ConfirmationSuppression nombre={selectionVisible.length} libelleConfirmer="Supprimer la sélection" enCours={suppressionEnCours}
+                    onConfirmer={supprimerSelection} onAnnuler={() => setConfirmation(null)} />
+                )}
+              </div>
+            )}
             {filtered.length > 0 ? (
-              <TableProfils profils={filtered} />
+              <ul className="-mx-3 divide-y divide-ligne" aria-label="Liste des profils">
+                {filtered.map((p, i) => (
+                  <CarteProfil key={p.id || `${p.link}-${i}`} profil={p} onOuvrir={ouvrirFiche}
+                    selectionne={selection.has(p.id)} onSelection={p.id ? choisir : undefined} />
+                ))}
+              </ul>
             ) : (
-              <EmptyState icone={Search} titre="Aucun profil ne correspond" texte={`Rien pour « ${filter} ».`}
-                action={<Button petit variante="secondaire" onClick={() => setFilter('')}>Effacer le filtre</Button>} />
+              <EmptyState icone={Search} titre="Aucun profil ne correspond"
+                texte={filter ? `Rien pour « ${filter} » avec ces filtres.` : 'Aucun profil avec ces filtres.'}
+                action={filtreActif && <Button petit variante="secondaire" onClick={effacerFiltres}>Effacer les filtres</Button>} />
             )}
           </>
         ) : (
@@ -243,11 +373,22 @@ export default function Scraper() {
           )
         )}
         {loading && scrapedProfiles.length === 0 && (
-          <div className="space-y-2" aria-label="Chargement des profils">
-            {[0, 1, 2].map((i) => <div key={i} className="h-12 animate-pulse rounded-controle bg-surface-douce" />)}
-          </div>
+          // Squelettes à la forme des cartes C-33.
+          <ul className="space-y-1" aria-label="Chargement des profils">
+            {[0, 1, 2].map((i) => (
+              <li key={i} className="flex items-start gap-3 px-3 py-3">
+                <span className="h-10 w-10 shrink-0 animate-pulse rounded-pilule bg-surface-douce" />
+                <span className="flex-1 space-y-2 pt-1">
+                  <span className="block h-3 w-2/5 animate-pulse rounded-pilule bg-surface-douce" />
+                  <span className="block h-3 w-3/4 animate-pulse rounded-pilule bg-surface-douce" />
+                </span>
+              </li>
+            ))}
+          </ul>
         )}
       </Card>
+
+      {profilOuvert && <FicheProfil key={profilOuvert.id} profil={profilOuvert} onFermer={fermerFiche} />}
     </Page>
   )
 }
